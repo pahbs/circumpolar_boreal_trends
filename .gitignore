@@ -1,0 +1,3 @@
+notebooks/archive/
+.ipynb_checkpoints/
+*-Copy[0-9]*.ipynb
