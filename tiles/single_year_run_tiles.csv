@@ -1,0 +1,498 @@
+tile_num,reason,realm,lat_band,lat,lon,boreal_frac,n_plots,plot_sources
+1822,earlier examples,Eurasia,55-60N,56.15,91.48,1,0,NA
+1902,earlier examples,Eurasia,60-65N,64.27,98.51,1,0,NA
+1775,earlier examples,Eurasia,70-75N,71.57,101.74,0,4,Miesner+NASA
+37522,earlier examples,Eurasia,70-75N,71.88,99.39,0,0,NA
+3456,earlier examples,North America,65-70N,65.03,-150.84,1,0,NA
+3173,earlier examples,North America,65-70N,68.48,-156.08,0,0,NA
+4321,field plots,Eurasia,50-55N,50.37,139.01,1,15,NASA
+2710,field plots,Eurasia,50-55N,51.93,106.55,0.67,9,NASA
+3691,field plots,Eurasia,50-55N,52.13,124.51,0.87,38,NASA
+2791,field plots,Eurasia,50-55N,52.26,108.33,0.36,2,NASA
+3597,field plots,Eurasia,50-55N,52.67,123.53,1,6,NASA
+3692,field plots,Eurasia,50-55N,52.72,125.42,0.27,12,NASA
+3598,field plots,Eurasia,50-55N,53.26,124.44,1,2,NASA
+3412,field plots,Eurasia,50-55N,53.72,121.48,1,2,NASA
+3504,field plots,Eurasia,50-55N,53.8,123.42,1,18,NASA
+1890,field plots,Eurasia,55-60N,55.17,92.51,1,5,NASA
+1891,field plots,Eurasia,55-60N,55.94,92.89,1,6,NASA
+1892,field plots,Eurasia,55-60N,56.71,93.3,1,9,NASA
+1963,field plots,Eurasia,55-60N,57.24,95.17,1,10,NASA
+1893,field plots,Eurasia,55-60N,57.47,93.72,1,8,NASA
+1585,field plots,Eurasia,55-60N,57.6,85.95,1,18,NASA
+1641,field plots,Eurasia,55-60N,58.24,87.75,1,3,NASA
+1586,field plots,Eurasia,55-60N,58.38,86.22,1,40,NASA
+2643,field plots,Eurasia,55-60N,59.94,113.37,1,5,Miesner
+1761,field plots,Eurasia,60-65N,60.97,92.39,1,9,NASA
+3239,field plots,Eurasia,60-65N,61.68,132.23,1,16,Kolyma+Miesner
+2566,field plots,Eurasia,60-65N,61.71,113.81,1,2,Miesner
+1762,field plots,Eurasia,60-65N,61.74,92.84,1,3,NASA
+3147,field plots,Eurasia,60-65N,61.74,129.79,1,69,Kolyma+Miesner
+2646,field plots,Eurasia,60-65N,61.91,116.22,1,1,Miesner
+3240,field plots,Eurasia,60-65N,62.19,133.56,1,4,Miesner
+3148,field plots,Eurasia,60-65N,62.28,131.08,1,13,Miesner
+3059,field plots,Eurasia,60-65N,62.32,128.59,1,26,Kolyma+Miesner
+2647,field plots,Eurasia,60-65N,62.56,117.26,1,3,Miesner
+2489,field plots,Eurasia,60-65N,62.81,113.31,1,2,Miesner
+1647,field plots,Eurasia,60-65N,62.9,89.87,1,1,NASA
+3336,field plots,Eurasia,60-65N,63.01,138.88,0.4,3,Miesner
+2648,field plots,Eurasia,60-65N,63.19,118.34,1,7,Miesner
+3430,field plots,Eurasia,60-65N,63.22,142.9,0.96,3,Miesner
+3337,field plots,Eurasia,60-65N,63.46,140.38,0.43,13,Miesner
+1704,field plots,Eurasia,60-65N,63.48,92.07,1,13,NASA
+1648,field plots,Eurasia,60-65N,63.68,90.28,1,13,NASA
+2728,field plots,Eurasia,60-65N,63.93,122.08,1,4,Miesner
+1974,field plots,Eurasia,65-70N,65.45,101.73,1,30,NASA
+1904,field plots,Eurasia,65-70N,65.76,99.9,0.86,30,NASA
+1835,field plots,Eurasia,65-70N,66.04,98.04,0.52,61,NASA
+3534,field plots,Eurasia,65-70N,66.3,166.92,0.3,20,Miesner
+1836,field plots,Eurasia,65-70N,66.79,98.75,0.47,14,NASA
+3442,field plots,Eurasia,65-70N,66.92,164.48,0.96,7,Miesner
+3444,field plots,Eurasia,65-70N,67.23,168.58,0.56,39,Miesner
+3349,field plots,Eurasia,65-70N,67.49,161.93,0.96,35,Kolyma
+3253,field plots,Eurasia,65-70N,67.5,155.21,1,56,Kolyma
+1837,field plots,Eurasia,65-70N,67.54,99.5,0.87,68,NASA
+3254,field plots,Eurasia,65-70N,67.78,157.21,1,55,Kolyma
+2816,field plots,Eurasia,65-70N,67.8,134.98,0.98,2,Miesner
+3351,field plots,Eurasia,65-70N,67.87,166.09,0.79,1,Miesner
+3352,field plots,Eurasia,65-70N,68.02,168.21,0.49,24,Miesner
+3256,field plots,Eurasia,65-70N,68.26,161.35,0.99,50,Kolyma+Miesner
+3257,field plots,Eurasia,65-70N,68.47,163.47,1,8,Miesner
+3164,field plots,Eurasia,65-70N,68.8,158.58,0.6,4,Kolyma
+3166,field plots,Eurasia,65-70N,69.25,162.92,0.46,9,Kolyma
+1910,field plots,Eurasia,70-75N,70.16,105.17,0.41,16,NASA
+2580,field plots,Eurasia,70-75N,70.17,132.42,0.54,1,Miesner
+1841,field plots,Eurasia,70-75N,70.5,103.01,0.44,52,NASA
+1774,field plots,Eurasia,70-75N,70.82,100.78,0.52,4,Miesner+NASA
+1911,field plots,Eurasia,70-75N,70.88,106.25,0.36,40,NASA
+1448,field plots,North America,NA,44.91,-79.53,0.59,1,NFI
+1392,field plots,North America,NA,44.96,-78.41,0.89,3,NFI
+1334,field plots,North America,45-50N,45,-77.28,1,1,NFI
+1273,field plots,North America,45-50N,45.03,-76.16,0.37,5,NFI
+1447,field plots,North America,45-50N,45.72,-79.61,0.99,2,NFI
+1391,field plots,North America,45-50N,45.78,-78.47,1,4,NFI
+1333,field plots,North America,45-50N,45.82,-77.33,0.88,5,NFI
+1272,field plots,North America,45-50N,45.85,-76.18,0.94,1,NFI
+1158,field plots,North America,45-50N,45.86,-73.89,0.47,2,NFI
+1616,field plots,North America,45-50N,46.29,-83.16,0.6,3,NFI
+1560,field plots,North America,45-50N,46.39,-82.01,0.86,3,NFI
+1503,field plots,North America,45-50N,46.47,-80.86,1,2,NFI
+1446,field plots,North America,45-50N,46.54,-79.7,1,2,NFI
+622,field plots,North America,45-50N,46.55,-61,0.27,1,NFI
+1390,field plots,North America,45-50N,46.6,-78.54,1,2,NFI
+1048,field plots,North America,45-50N,46.64,-71.55,0.27,2,NFI
+1332,field plots,North America,45-50N,46.64,-77.38,1,2,NFI
+1103,field plots,North America,45-50N,46.67,-72.72,0.63,4,NFI
+1271,field plots,North America,45-50N,46.67,-76.21,1,2,NFI
+1157,field plots,North America,45-50N,46.68,-73.88,1,5,NFI
+1212,field plots,North America,45-50N,46.68,-75.05,1,1,NFI
+1672,field plots,North America,45-50N,46.98,-84.48,0.61,2,NFI
+1615,field plots,North America,45-50N,47.1,-83.32,1,3,NFI
+847,field plots,North America,45-50N,47.19,-66.78,0.53,4,NFI
+1559,field plots,North America,45-50N,47.2,-82.15,1,3,NFI
+1502,field plots,North America,45-50N,47.28,-80.97,1,3,NFI
+1445,field plots,North America,45-50N,47.35,-79.8,1,2,NFI
+1389,field plots,North America,45-50N,47.41,-78.61,1,1,NFI
+1047,field plots,North America,45-50N,47.45,-71.5,1,2,NFI
+1331,field plots,North America,45-50N,47.45,-77.43,1,2,NFI
+1102,field plots,North America,45-50N,47.48,-72.68,1,4,NFI
+1270,field plots,North America,45-50N,47.48,-76.24,1,2,NFI
+1156,field plots,North America,45-50N,47.5,-73.87,1,2,NFI
+1671,field plots,North America,45-50N,47.79,-84.66,0.79,2,NFI
+1614,field plots,North America,45-50N,47.9,-83.47,1,2,NFI
+424,field plots,North America,45-50N,47.92,-54.4,0.8,2,NFI
+846,field plots,North America,45-50N,48,-66.65,0.45,3,NFI
+1558,field plots,North America,45-50N,48.01,-82.28,1,3,NFI
+892,field plots,North America,45-50N,48.09,-67.84,0.89,1,NFI
+1501,field plots,North America,45-50N,48.09,-81.09,1,4,NFI
+458,field plots,North America,45-50N,48.15,-55.55,0.98,2,NFI
+940,field plots,North America,45-50N,48.16,-69.04,0.34,4,NFI
+1444,field plots,North America,45-50N,48.17,-79.89,1,3,NFI
+990,field plots,North America,45-50N,48.22,-70.24,0.95,4,NFI
+1388,field plots,North America,45-50N,48.22,-78.69,1,2,NFI
+1046,field plots,North America,45-50N,48.27,-71.45,1,3,NFI
+1330,field plots,North America,45-50N,48.27,-77.48,1,2,NFI
+1101,field plots,North America,45-50N,48.3,-72.65,1,2,NFI
+1155,field plots,North America,45-50N,48.31,-73.86,1,3,NFI
+1210,field plots,North America,45-50N,48.31,-75.07,1,2,NFI
+498,field plots,North America,45-50N,48.37,-56.72,1,1,NFI
+1729,field plots,North America,45-50N,48.46,-86.04,0.67,5,NFI
+753,field plots,North America,45-50N,48.59,-64.09,0.25,1,NFI
+1670,field plots,North America,45-50N,48.59,-84.84,1,1,NFI
+423,field plots,North America,45-50N,48.69,-54.04,0.7,3,NFI
+1613,field plots,North America,45-50N,48.71,-83.64,1,2,NFI
+845,field plots,North America,45-50N,48.81,-66.5,0.89,1,NFI
+1557,field plots,North America,45-50N,48.81,-82.42,1,2,NFI
+1500,field plots,North America,45-50N,48.9,-81.21,1,2,NFI
+457,field plots,North America,45-50N,48.93,-55.21,0.96,1,NFI
+1863,field plots,North America,45-50N,48.95,-88.66,0.86,1,NFI
+939,field plots,North America,45-50N,48.97,-68.94,0.72,1,NFI
+1443,field plots,North America,45-50N,48.97,-79.99,1,2,NFI
+989,field plots,North America,45-50N,49.03,-70.16,1,2,NFI
+1387,field plots,North America,45-50N,49.03,-78.77,1,3,NFI
+1045,field plots,North America,45-50N,49.08,-71.39,1,1,NFI
+1329,field plots,North America,45-50N,49.08,-77.54,1,5,NFI
+1100,field plots,North America,45-50N,49.11,-72.62,1,2,NFI
+1268,field plots,North America,45-50N,49.11,-76.31,1,2,NFI
+1795,field plots,North America,45-50N,49.11,-87.46,0.88,6,NFI
+1154,field plots,North America,45-50N,49.12,-73.85,1,1,NFI
+1209,field plots,North America,45-50N,49.12,-75.08,1,2,NFI
+497,field plots,North America,45-50N,49.15,-56.39,0.99,2,NFI
+707,field plots,North America,45-50N,49.26,-62.68,0.52,1,NFI
+1728,field plots,North America,45-50N,49.26,-86.25,1,1,NFI
+537,field plots,North America,45-50N,49.36,-57.59,0.88,3,NFI
+2005,field plots,North America,45-50N,49.37,-91.34,0.37,2,NFI
+752,field plots,North America,45-50N,49.39,-63.9,0.25,1,NFI
+1669,field plots,North America,45-50N,49.39,-85.03,1,2,NFI
+1612,field plots,North America,45-50N,49.51,-83.8,1,7,NFI
+1933,field plots,North America,45-50N,49.56,-90.14,1,1,NFI
+1556,field plots,North America,45-50N,49.62,-82.57,1,2,NFI
+1499,field plots,North America,45-50N,49.71,-81.33,1,4,NFI
+1862,field plots,North America,45-50N,49.74,-88.93,1,2,NFI
+938,field plots,North America,45-50N,49.78,-68.84,0.98,2,NFI
+1442,field plots,North America,45-50N,49.78,-80.09,1,4,NFI
+988,field plots,North America,45-50N,49.84,-70.08,1,5,NFI
+1044,field plots,North America,45-50N,49.89,-71.33,1,4,NFI
+1328,field plots,North America,45-50N,49.89,-77.6,1,4,NFI
+1794,field plots,North America,45-50N,49.91,-87.7,1,4,NFI
+1099,field plots,North America,45-50N,49.92,-72.58,1,1,NFI
+1267,field plots,North America,45-50N,49.92,-76.34,1,2,NFI
+496,field plots,North America,45-50N,49.93,-56.06,0.38,1,NFI
+1153,field plots,North America,45-50N,49.93,-73.84,1,1,NFI
+1208,field plots,North America,45-50N,49.93,-75.09,1,1,NFI
+2074,field plots,North America,45-50N,49.94,-92.87,0.46,1,NFI
+706,field plots,North America,50-55N,50.05,-62.46,0.26,1,NFI
+1727,field plots,North America,50-55N,50.06,-86.47,1,1,NFI
+536,field plots,North America,50-55N,50.14,-57.27,0.75,2,NFI
+2004,field plots,North America,50-55N,50.15,-91.66,0.77,3,NFI
+751,field plots,North America,50-55N,50.19,-63.7,0.49,1,NFI
+1668,field plots,North America,50-55N,50.19,-85.23,1,1,NFI
+2221,field plots,North America,50-55N,50.24,-95.64,0.27,3,NFI
+797,field plots,North America,50-55N,50.31,-64.95,0.54,2,NFI
+1932,field plots,North America,50-55N,50.35,-90.43,1,2,NFI
+843,field plots,North America,50-55N,50.42,-66.2,0.77,1,NFI
+2146,field plots,North America,50-55N,50.49,-94.43,0.81,1,NFI
+889,field plots,North America,50-55N,50.51,-67.46,1,2,NFI
+1498,field plots,North America,50-55N,50.51,-81.46,1,1,NFI
+1861,field plots,North America,50-55N,50.53,-89.2,1,2,NFI
+937,field plots,North America,50-55N,50.59,-68.73,1,3,NFI
+1441,field plots,North America,50-55N,50.59,-80.2,1,1,NFI
+987,field plots,North America,50-55N,50.65,-70,1,2,NFI
+1043,field plots,North America,50-55N,50.69,-71.27,1,2,NFI
+3299,field plots,North America,50-55N,50.71,-114.43,0.5,1,NFI
+2073,field plots,North America,50-55N,50.72,-93.21,1,2,NFI
+1098,field plots,North America,50-55N,50.73,-72.55,1,2,NFI
+1266,field plots,North America,50-55N,50.73,-76.38,1,2,NFI
+1152,field plots,North America,50-55N,50.74,-73.83,1,2,NFI
+1207,field plots,North America,50-55N,50.74,-75.1,1,1,NFI
+705,field plots,North America,50-55N,50.85,-62.23,1,1,NFI
+535,field plots,North America,50-55N,50.93,-56.95,0.56,1,NFI
+2003,field plots,North America,50-55N,50.93,-91.98,1,1,NFI
+2454,field plots,North America,50-55N,50.94,-100.1,0.65,3,NFI
+750,field plots,North America,50-55N,50.99,-63.5,1,1,NFI
+2220,field plots,North America,50-55N,51.01,-96.04,0.76,3,NFI
+1931,field plots,North America,50-55N,51.13,-90.73,1,1,NFI
+2145,field plots,North America,50-55N,51.26,-94.81,1,2,NFI
+888,field plots,North America,50-55N,51.31,-67.33,1,1,NFI
+1860,field plots,North America,50-55N,51.32,-89.48,1,2,NFI
+2534,field plots,North America,50-55N,51.37,-101.79,1,2,NFI
+986,field plots,North America,50-55N,51.45,-69.91,1,2,NFI
+1792,field plots,North America,50-55N,51.49,-88.21,1,1,NFI
+2072,field plots,North America,50-55N,51.49,-93.57,1,1,NFI
+1042,field plots,North America,50-55N,51.5,-71.21,1,2,NFI
+2296,field plots,North America,50-55N,51.51,-97.68,0.92,4,NFI
+1097,field plots,North America,50-55N,51.53,-72.51,1,1,NFI
+704,field plots,North America,50-55N,51.64,-62,1,1,NFI
+1725,field plots,North America,50-55N,51.64,-86.93,1,1,NFI
+2453,field plots,North America,50-55N,51.68,-100.59,0.85,3,NFI
+534,field plots,North America,50-55N,51.7,-56.61,0.7,2,NFI
+2002,field plots,North America,50-55N,51.71,-92.32,1,4,NFI
+2219,field plots,North America,50-55N,51.77,-96.45,0.78,1,NFI
+3205,field plots,North America,50-55N,51.83,-114.08,0.87,1,NFI
+1930,field plots,North America,50-55N,51.91,-91.05,1,2,NFI
+2533,field plots,North America,50-55N,52.11,-102.31,1,1,NFI
+935,field plots,North America,50-55N,52.19,-68.5,1,1,NFI
+985,field plots,North America,50-55N,52.26,-69.82,1,1,NFI
+2071,field plots,North America,50-55N,52.26,-93.94,1,2,NFI
+2295,field plots,North America,50-55N,52.27,-98.13,0.45,2,NFI
+2452,field plots,North America,50-55N,52.43,-101.09,0.96,3,NFI
+533,field plots,North America,50-55N,52.48,-56.26,0.8,3,NFI
+2001,field plots,North America,50-55N,52.49,-92.67,1,2,NFI
+3204,field plots,North America,50-55N,52.5,-114.82,1,1,NFI
+2218,field plots,North America,50-55N,52.54,-96.88,0.71,1,NFI
+573,field plots,North America,50-55N,52.69,-57.55,1,1,NFI
+3296,field plots,North America,50-55N,52.69,-116.68,0.43,2,NFI
+2371,field plots,North America,50-55N,52.73,-99.85,0.66,2,NFI
+2143,field plots,North America,50-55N,52.79,-95.61,1,1,NFI
+2532,field plots,North America,50-55N,52.84,-102.85,1,5,NFI
+2692,field plots,North America,50-55N,52.88,-105.85,1,1,NFI
+657,field plots,North America,50-55N,53.06,-60.17,0.93,1,NFI
+2451,field plots,North America,50-55N,53.17,-101.61,0.95,2,NFI
+702,field plots,North America,50-55N,53.22,-61.49,1,1,NFI
+2612,field plots,North America,50-55N,53.23,-104.64,1,2,NFI
+532,field plots,North America,50-55N,53.25,-55.9,0.43,1,NFI
+2000,field plots,North America,50-55N,53.26,-93.03,1,1,NFI
+3295,field plots,North America,50-55N,53.34,-117.48,0.61,1,NFI
+747,field plots,North America,50-55N,53.37,-62.83,1,1,NFI
+572,field plots,North America,50-55N,53.47,-57.21,0.88,5,NFI
+2370,field plots,North America,50-55N,53.48,-100.36,0.95,2,NFI
+2854,field plots,North America,50-55N,53.53,-109.53,1,1,NFI
+2142,field plots,North America,50-55N,53.56,-96.04,1,1,NFI
+2531,field plots,North America,50-55N,53.58,-103.41,1,1,NFI
+2691,field plots,North America,50-55N,53.59,-106.47,1,2,NFI
+613,field plots,North America,50-55N,53.66,-58.54,0.88,1,NFI
+2293,field plots,North America,50-55N,53.77,-99.08,0.7,1,NFI
+2069,field plots,North America,50-55N,53.8,-94.73,1,1,NFI
+656,field plots,North America,50-55N,53.84,-59.88,0.69,3,NFI
+2450,field plots,North America,50-55N,53.9,-102.15,1,1,NFI
+2771,field plots,North America,50-55N,53.92,-108.33,1,4,NFI
+2611,field plots,North America,50-55N,53.96,-105.24,1,5,NFI
+3294,field plots,North America,50-55N,53.98,-118.31,0.62,1,NFI
+1999,field plots,North America,50-55N,54.03,-93.41,1,1,NFI
+2216,field plots,North America,50-55N,54.05,-97.79,0.85,1,NFI
+2369,field plots,North America,50-55N,54.22,-100.88,1,5,NFI
+3110,field plots,North America,50-55N,54.28,-115.24,1,1,NFI
+2530,field plots,North America,50-55N,54.3,-103.99,1,3,NFI
+2690,field plots,North America,50-55N,54.31,-107.11,1,3,NFI
+2141,field plots,North America,50-55N,54.32,-96.48,1,1,NFI
+612,field plots,North America,50-55N,54.44,-58.21,0.71,2,NFI
+3201,field plots,North America,50-55N,54.46,-117.19,1,1,NFI
+2292,field plots,North America,50-55N,54.52,-99.58,1,6,NFI
+2770,field plots,North America,50-55N,54.62,-109.01,1,2,NFI
+2610,field plots,North America,50-55N,54.67,-105.86,1,4,NFI
+3021,field plots,North America,50-55N,54.73,-114.09,1,1,NFI
+1998,field plots,North America,50-55N,54.8,-93.8,1,2,NFI
+2215,field plots,North America,50-55N,54.8,-98.27,1,7,NFI
+2852,field plots,North America,50-55N,54.91,-110.94,1,1,NFI
+3109,field plots,North America,50-55N,54.93,-116.05,1,1,NFI
+2368,field plots,North America,50-55N,54.96,-101.42,1,2,NFI
+2689,field plots,North America,55-60N,55.01,-107.77,1,5,NFI
+2529,field plots,North America,55-60N,55.03,-104.6,1,1,NFI
+2140,field plots,North America,55-60N,55.07,-96.93,1,3,NFI
+3200,field plots,North America,55-60N,55.1,-118.04,1,2,NFI
+2934,field plots,North America,55-60N,55.17,-112.9,1,1,NFI
+3292,field plots,North America,55-60N,55.24,-120.04,0.99,2,NFI
+2291,field plots,North America,55-60N,55.26,-100.11,1,2,NFI
+2067,field plots,North America,55-60N,55.33,-95.58,1,3,NFI
+2609,field plots,North America,55-60N,55.39,-106.51,1,2,NFI
+2214,field plots,North America,55-60N,55.55,-98.77,1,1,NFI
+1997,field plots,North America,55-60N,55.57,-94.21,1,1,NFI
+3108,field plots,North America,55-60N,55.58,-116.89,1,1,NFI
+2367,field plots,North America,55-60N,55.69,-101.99,1,3,NFI
+3199,field plots,North America,55-60N,55.74,-118.91,1,1,NFI
+2528,field plots,North America,55-60N,55.75,-105.22,1,1,NFI
+2139,field plots,North America,55-60N,55.83,-97.41,1,2,NFI
+3291,field plots,North America,55-60N,55.86,-120.95,0.98,2,NFI
+2290,field plots,North America,55-60N,56,-100.65,1,4,NFI
+2066,field plots,North America,55-60N,56.09,-96.03,1,2,NFI
+3107,field plots,North America,55-60N,56.22,-117.76,1,1,NFI
+2213,field plots,North America,55-60N,56.3,-99.29,1,4,NFI
+2687,field plots,North America,55-60N,56.41,-109.18,1,2,NFI
+3290,field plots,North America,55-60N,56.47,-121.9,0.89,3,NFI
+2138,field plots,North America,55-60N,56.58,-97.91,1,1,NFI
+2767,field plots,North America,55-60N,56.69,-111.2,1,2,NFI
+2289,field plots,North America,55-60N,56.74,-101.21,0.99,2,NFI
+2065,field plots,North America,55-60N,56.85,-96.5,1,2,NFI
+3197,field plots,North America,55-60N,56.99,-120.76,1,2,NFI
+3289,field plots,North America,55-60N,57.08,-122.87,0.88,2,NFI
+2686,field plots,North America,55-60N,57.1,-109.92,1,1,NFI
+3381,field plots,North America,55-60N,57.13,-125,0.95,4,NFI
+2137,field plots,North America,55-60N,57.33,-98.42,1,1,NFI
+2766,field plots,North America,55-60N,57.37,-111.99,1,1,NFI
+3105,field plots,North America,55-60N,57.49,-119.58,1,1,NFI
+3196,field plots,North America,55-60N,57.6,-121.73,1,3,NFI
+2848,field plots,North America,55-60N,57.61,-114.09,1,2,NFI
+3288,field plots,North America,55-60N,57.67,-123.88,1,2,NFI
+3566,field plots,North America,55-60N,57.68,-130.37,0.95,3,NFI
+3380,field plots,North America,55-60N,57.71,-126.04,1,3,NFI
+3472,field plots,North America,55-60N,57.71,-128.21,1,3,NFI
+2685,field plots,North America,55-60N,57.79,-110.69,1,1,NFI
+3016,field plots,North America,55-60N,57.98,-118.38,1,2,NFI
+3104,field plots,North America,55-60N,58.11,-120.55,1,1,NFI
+3195,field plots,North America,55-60N,58.2,-122.73,1,2,NFI
+3565,field plots,North America,55-60N,58.21,-131.51,0.94,3,NFI
+3471,field plots,North America,55-60N,58.26,-129.32,1,1,NFI
+2847,field plots,North America,55-60N,58.27,-114.96,1,1,NFI
+3103,field plots,North America,55-60N,58.72,-121.54,1,4,NFI
+3564,field plots,North America,55-60N,58.73,-132.7,0.82,3,NFI
+3194,field plots,North America,55-60N,58.8,-123.77,1,2,NFI
+3470,field plots,North America,55-60N,58.8,-130.47,1,2,NFI
+3378,field plots,North America,55-60N,58.84,-128.24,1,2,NFI
+2604,field plots,North America,55-60N,58.88,-110.15,0.65,1,NFI
+3014,field plots,North America,55-60N,59.23,-120.32,1,3,NFI
+3563,field plots,North America,55-60N,59.24,-133.92,0.7,1,NFI
+3102,field plots,North America,55-60N,59.33,-122.58,1,3,NFI
+3469,field plots,North America,55-60N,59.33,-131.66,1,1,NFI
+3193,field plots,North America,55-60N,59.39,-124.84,1,4,NFI
+3377,field plots,North America,55-60N,59.39,-129.39,1,2,NFI
+3285,field plots,North America,55-60N,59.41,-127.12,1,3,NFI
+2845,field plots,North America,55-60N,59.57,-116.79,1,1,NFI
+3562,field plots,North America,55-60N,59.74,-135.17,0.62,1,NFI
+3101,field plots,North America,55-60N,59.92,-123.65,1,4,NFI
+3376,field plots,North America,55-60N,59.93,-130.58,1,1,NFI
+3192,field plots,North America,55-60N,59.96,-125.96,1,5,NFI
+3284,field plots,North America,55-60N,59.97,-128.27,1,4,NFI
+2844,field plots,North America,60-65N,60.21,-117.76,1,4,NFI
+2926,field plots,North America,60-65N,60.35,-120.08,1,5,NFI
+3012,field plots,North America,60-65N,60.45,-122.41,1,2,NFI
+2681,field plots,North America,60-65N,60.48,-114.1,0.99,4,NFI
+2761,field plots,North America,60-65N,60.68,-116.42,0.85,1,NFI
+2843,field plots,North America,60-65N,60.84,-118.77,1,3,NFI
+2601,field plots,North America,60-65N,60.92,-112.7,0.96,2,NFI
+2925,field plots,North America,60-65N,60.96,-121.14,1,2,NFI
+3011,field plots,North America,60-65N,61.05,-123.52,1,5,NFI
+2760,field plots,North America,60-65N,61.32,-117.42,0.89,3,NFI
+2842,field plots,North America,60-65N,61.47,-119.82,1,7,NFI
+2924,field plots,North America,60-65N,61.57,-122.24,1,2,NFI
+3010,field plots,North America,60-65N,61.63,-124.67,1,1,NFI
+2679,field plots,North America,60-65N,61.79,-116.03,0.87,2,NFI
+2759,field plots,North America,60-65N,61.96,-118.46,1,3,NFI
+2841,field plots,North America,60-65N,62.08,-120.91,1,3,NFI
+2923,field plots,North America,60-65N,62.17,-123.38,1,2,NFI
+2678,field plots,North America,60-65N,62.44,-117.06,1,1,NFI
+2758,field plots,North America,60-65N,62.59,-119.54,1,3,NFI
+2840,field plots,North America,60-65N,62.69,-122.05,1,1,NFI
+2922,field plots,North America,60-65N,62.76,-124.57,1,1,NFI
+2677,field plots,North America,60-65N,63.07,-118.13,1,2,NFI
+2839,field plots,North America,60-65N,63.29,-123.24,1,6,NFI
+2597,field plots,North America,60-65N,63.55,-116.67,0.99,2,NFI
+2756,field plots,North America,60-65N,63.81,-121.85,1,1,NFI
+2838,field plots,North America,60-65N,63.88,-124.47,1,2,NFI
+2675,field plots,North America,60-65N,64.32,-120.41,1,1,NFI
+2837,field plots,North America,60-65N,64.46,-125.75,1,4,NFI
+2595,field plots,North America,60-65N,64.82,-118.92,1,1,NFI
+2674,field plots,North America,60-65N,64.94,-121.63,0.7,3,NFI
+2754,field plots,North America,65-70N,65.01,-124.36,0.99,4,NFI
+2918,field plots,North America,65-70N,65.01,-129.83,1,1,NFI
+2836,field plots,North America,65-70N,65.03,-127.09,1,2,NFI
+2673,field plots,North America,65-70N,65.54,-122.9,0.64,2,NFI
+2917,field plots,North America,65-70N,65.55,-131.28,1,2,NFI
+2753,field plots,North America,65-70N,65.59,-125.69,1,3,NFI
+2835,field plots,North America,65-70N,65.59,-128.49,1,5,NFI
+2513,field plots,North America,65-70N,65.94,-118.57,0.38,1,NFI
+2672,field plots,North America,65-70N,66.13,-124.23,0.72,2,NFI
+2834,field plots,North America,65-70N,66.14,-129.94,1,2,NFI
+2752,field plots,North America,65-70N,66.16,-127.09,1,4,NFI
+2915,field plots,North America,65-70N,66.58,-134.34,0.99,1,NFI
+2671,field plots,North America,65-70N,66.72,-125.63,0.98,1,NFI
+2751,field plots,North America,65-70N,66.72,-128.54,1,5,NFI
+2914,field plots,North America,65-70N,67.07,-135.97,0.59,1,NFI
+2832,field plots,North America,65-70N,67.2,-133.03,1,1,NFI
+2750,field plots,North America,65-70N,67.27,-130.06,1,5,NFI
+2670,field plots,North America,65-70N,67.29,-127.08,1,1,NFI
+2831,field plots,North America,65-70N,67.7,-134.66,0.99,1,NFI
+2749,field plots,North America,65-70N,67.8,-131.64,1,2,NFI
+2590,field plots,North America,65-70N,67.85,-125.55,0.51,1,NFI
+2669,field plots,North America,65-70N,67.85,-128.6,0.93,1,NFI
+2748,field plots,North America,65-70N,68.32,-133.29,0.61,2,NFI
+2668,field plots,North America,65-70N,68.4,-130.19,0.84,1,NFI
+4392,stratified sample,Eurasia,45-50N,47.63,137.45,0.98,0,NA
+4355,stratified sample,Eurasia,45-50N,48.76,137.71,0.77,0,NA
+4433,stratified sample,Eurasia,45-50N,48.79,142.11,0.58,0,NA
+3038,stratified sample,Eurasia,45-50N,48.96,109.78,0.73,0,NA
+2867,stratified sample,Eurasia,45-50N,49.03,107.04,0.84,0,NA
+3127,stratified sample,Eurasia,45-50N,49.24,111.46,0.67,0,NA
+3876,stratified sample,Eurasia,45-50N,49.25,123.82,0.56,0,NA
+4186,stratified sample,Eurasia,45-50N,49.78,131.73,0.7,0,NA
+4320,stratified sample,Eurasia,45-50N,49.9,137.98,0.74,0,NA
+3128,stratified sample,Eurasia,45-50N,49.93,112.12,0.65,0,NA
+4283,stratified sample,Eurasia,50-55N,51.02,138.27,1,0,NA
+4287,stratified sample,Eurasia,50-55N,52.81,142.65,0.95,0,NA
+547,stratified sample,Eurasia,50-55N,52.84,57.49,0.57,0,NA
+3972,stratified sample,Eurasia,50-55N,53.19,132.12,1,0,NA
+3693,stratified sample,Eurasia,50-55N,53.29,126.36,0.73,0,NA
+2634,stratified sample,Eurasia,50-55N,53.73,106.59,1,0,NA
+3045,stratified sample,Eurasia,50-55N,53.74,114.61,0.66,0,NA
+2397,stratified sample,Eurasia,50-55N,54.04,102.26,1,0,NA
+1820,stratified sample,Eurasia,50-55N,54.59,90.78,1,0,NA
+4367,stratified sample,Eurasia,50-55N,54.91,156.27,0.98,0,NA
+3228,stratified sample,Eurasia,55-60N,55.36,120.21,1,0,NA
+1235,stratified sample,Eurasia,55-60N,55.7,76.63,1,0,NA
+4331,stratified sample,Eurasia,55-60N,55.93,157.13,1,0,NA
+1528,stratified sample,Eurasia,55-60N,56.94,84.22,1,0,NA
+118,stratified sample,Eurasia,55-60N,56.97,30.1,1,0,NA
+1894,stratified sample,Eurasia,55-60N,58.24,94.16,1,0,NA
+338,stratified sample,Eurasia,55-60N,58.72,44.31,1,0,NA
+2720,stratified sample,Eurasia,55-60N,58.84,113.83,0.97,0,NA
+596,stratified sample,Eurasia,55-60N,59.22,55.83,1,0,NA
+863,stratified sample,Eurasia,55-60N,59.41,65.59,1,0,NA
+3236,stratified sample,Eurasia,60-65N,60.07,128.49,1,0,NA
+638,stratified sample,Eurasia,60-65N,60.2,56.97,1,0,NA
+2805,stratified sample,Eurasia,60-65N,61.59,120.03,1,0,NA
+2971,stratified sample,Eurasia,60-65N,61.75,124.89,1,0,NA
+3809,stratified sample,Eurasia,60-65N,62.17,154.1,0.6,0,NA
+1535,stratified sample,Eurasia,60-65N,62.44,86.02,1,0,NA
+3521,stratified sample,Eurasia,60-65N,62.54,143.83,0.65,0,NA
+1703,stratified sample,Eurasia,60-65N,62.71,91.6,1,0,NA
+109,stratified sample,Eurasia,60-65N,62.78,16.52,1,0,NA
+601,stratified sample,Eurasia,60-65N,63.02,53.36,1,0,NA
+563,stratified sample,Eurasia,65-70N,65.01,49.73,1,0,NA
+242,stratified sample,Eurasia,65-70N,65.04,27.05,1,0,NA
+604,stratified sample,Eurasia,65-70N,65.29,51.55,1,0,NA
+1482,stratified sample,Eurasia,65-70N,65.71,85.42,1,0,NA
+3532,stratified sample,Eurasia,65-70N,65.95,162.99,0.6,0,NA
+2494,stratified sample,Eurasia,65-70N,66.06,118.81,1,0,NA
+3439,stratified sample,Eurasia,65-70N,66.26,158.56,0.9,0,NA
+825,stratified sample,Eurasia,65-70N,66.35,61.16,0.67,0,NA
+1652,stratified sample,Eurasia,65-70N,66.77,92.21,0.71,0,NA
+2574,stratified sample,Eurasia,65-70N,66.78,122.97,1,0,NA
+2269,stratified sample,Eurasia,70-75N,70.07,119,0.96,0,NA
+2050,stratified sample,Eurasia,70-75N,70.1,110.47,0.59,0,NA
+355,stratified sample,Eurasia,70-75N,70.16,26.58,0.92,0,NA
+326,stratified sample,Eurasia,70-75N,70.22,23.22,0.76,0,NA
+2421,stratified sample,Eurasia,70-75N,70.23,125.69,0.99,0,NA
+2121,stratified sample,Eurasia,70-75N,70.35,113.75,1,0,NA
+2195,stratified sample,Eurasia,70-75N,70.55,117.1,0.89,0,NA
+2270,stratified sample,Eurasia,70-75N,70.7,120.49,0.58,0,NA
+356,stratified sample,Eurasia,70-75N,70.77,24.98,0.51,0,NA
+2051,stratified sample,Eurasia,70-75N,70.79,111.71,0.77,0,NA
+1211,stratified sample,North America,45-50N,47.5,-75.06,1,0,NA
+392,stratified sample,North America,45-50N,47.67,-53.26,0.54,0,NA
+1269,stratified sample,North America,45-50N,48.3,-76.28,1,0,NA
+799,stratified sample,North America,45-50N,48.71,-65.29,1,0,NA
+1934,stratified sample,North America,45-50N,48.77,-89.86,0.66,0,NA
+2537,stratified sample,North America,45-50N,49.13,-100.33,0.65,0,NA
+2617,stratified sample,North America,45-50N,49.57,-101.94,0.79,0,NA
+890,stratified sample,North America,45-50N,49.71,-67.59,0.85,0,NA
+1386,stratified sample,North America,45-50N,49.84,-78.84,1,0,NA
+2536,stratified sample,North America,45-50N,49.88,-100.8,1,0,NA
+2455,stratified sample,North America,50-55N,50.18,-99.63,0.77,0,NA
+1326,stratified sample,North America,50-55N,51.5,-77.72,1,0,NA
+1265,stratified sample,North America,50-55N,51.53,-76.42,1,0,NA
+1666,stratified sample,North America,50-55N,51.79,-85.64,1,0,NA
+887,stratified sample,North America,50-55N,52.11,-67.19,1,0,NA
+2773,stratified sample,North America,50-55N,52.51,-107.04,0.73,0,NA
+3024,stratified sample,North America,50-55N,52.71,-111.85,0.91,0,NA
+1149,stratified sample,North America,50-55N,53.16,-73.79,1,0,NA
+1551,stratified sample,North America,50-55N,53.62,-83.39,1,0,NA
+1262,stratified sample,North America,50-55N,53.94,-76.54,1,0,NA
+791,stratified sample,North America,55-60N,55.08,-63.74,1,0,NA
+2448,stratified sample,North America,55-60N,55.37,-103.3,1,0,NA
+1037,stratified sample,North America,55-60N,55.51,-70.86,1,0,NA
+744,stratified sample,North America,55-60N,55.73,-62.08,0.98,0,NA
+790,stratified sample,North America,55-60N,55.87,-63.51,1,0,NA
+1786,stratified sample,North America,55-60N,56.19,-90,1,0,NA
+2366,stratified sample,North America,55-60N,56.42,-102.58,0.82,0,NA
+1853,stratified sample,North America,55-60N,56.77,-91.79,0.91,0,NA
+1090,stratified sample,North America,55-60N,57.14,-72.2,1,0,NA
+1921,stratified sample,North America,55-60N,58.85,-94.53,0.52,0,NA
+1991,stratified sample,North America,60-65N,60.12,-97.06,1,0,NA
+3651,stratified sample,North America,60-65N,61.37,-142.96,0.61,0,NA
+3009,stratified sample,North America,60-65N,62.21,-125.86,1,0,NA
+2437,stratified sample,North America,60-65N,63.11,-111.61,0.97,0,NA
+3829,stratified sample,North America,60-65N,63.18,-160.51,0.87,0,NA
+3553,stratified sample,North America,60-65N,63.62,-148.28,0.94,0,NA
+2920,stratified sample,North America,60-65N,63.91,-127.1,1,0,NA
+3458,stratified sample,North America,60-65N,64.33,-147.42,1,0,NA
+3183,stratified sample,North America,60-65N,64.68,-137.95,1,0,NA
+3549,stratified sample,North America,60-65N,64.92,-155.16,1,0,NA
+3364,stratified sample,North America,65-70N,65.4,-148.24,1,0,NA
+2594,stratified sample,North America,65-70N,65.44,-120.13,0.54,0,NA
+3454,stratified sample,North America,65-70N,65.67,-154.44,1,0,NA
+3090,stratified sample,North America,65-70N,65.79,-138.4,1,0,NA
+3089,stratified sample,North America,65-70N,66.25,-140.05,1,0,NA
+2833,stratified sample,North America,65-70N,66.67,-131.45,1,0,NA
+3178,stratified sample,North America,65-70N,66.81,-146.35,1,0,NA
+2999,stratified sample,North America,65-70N,67.35,-140.61,1,0,NA
+3086,stratified sample,North America,65-70N,67.51,-145.33,0.96,0,NA
+2912,stratified sample,North America,65-70N,68.02,-139.41,0.94,0,NA
