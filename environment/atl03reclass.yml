@@ -1,0 +1,29 @@
+# Python environment for the ATL03 v007 reclassification work (lib/, notebooks/atl03_reclass/).
+# conda-forge Python only; everything else from pip wheels (rasterio/pyogrio wheels bundle GDAL).
+# A full conda solve of these packages hung for hours (micromamba 2.0.8, Oct 2026); this recipe builds in minutes.
+#   conda env create -f environment/atl03reclass.yml          (or: micromamba create -p <prefix> -f ...)
+#   python -m ipykernel install --user --name atl03reclass
+# Run with PYTHONNOUSERSITE=1 so packages in ~/.local do not leak in.
+# Built and tested Oct 2026 with: sliderule 5.6.3, geopandas 1.2.0, rasterio 1.4.4 (GDAL 3.10.3), earthaccess 0.17.0
+name: atl03reclass
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - geopandas
+    - pyogrio
+    - rasterio
+    - scipy
+    - scikit-learn
+    - matplotlib
+    - pyarrow
+    - pyyaml
+    - h5py
+    - s3fs
+    - ipykernel
+    - nbconvert
+    - pytest
+    - sliderule
+    - earthaccess
+    - papermill

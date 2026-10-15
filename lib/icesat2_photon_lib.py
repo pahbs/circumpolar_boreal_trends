@@ -1,0 +1,570 @@
+"""ICESat-2 ATL03 v007 photon reclassification, 30 m segments and canopy cover.
+
+Every threshold comes from the versioned config (config/atl03_reclass_v*.yaml).
+Notebooks call these functions; no algorithm code lives in notebooks.
+
+Photon classes used throughout:
+    0 noise, 1 ground, 2 canopy, 3 top of canopy (ATL08 only), 4 unclassified (ATL08 only)
+    new classifier: 0 noise, 1 ground, 2 canopy, 3 canopy-top photon recovered from the noise filter
+Reference labels (from airborne/UAV DTM + CHM): 'ground', 'canopy', 'buffer', 'noise', 'none'
+
+Steps (see docs/atl03_reclassification_plan.md, section 4):
+    granules_from_cmr -> fetch_photons -> reclassify -> segment_metrics -> fit_reflectance_ratio -> canopy_cover
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+import os
+import subprocess
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import requests
+import yaml
+from scipy.optimize import least_squares
+from scipy.spatial import cKDTree
+
+C_LIGHT = 299_792_458.0
+TRACK_COLS = ["rgt", "cycle", "gt"]
+REPO_DIR = Path(__file__).resolve().parents[1]
+
+
+# ============================================================ config and provenance
+
+def load_config(path=None, profile=None):
+    """Read the config and resolve the path profile ('adapt' or 'maap'; auto-detected if None)."""
+    path = Path(path or REPO_DIR / "config" / "atl03_reclass_v0.1.yaml")
+    cfg = yaml.safe_load(path.read_text())
+    if profile is None:
+        profile = "maap" if os.path.isdir("/projects") and os.environ.get("MAAP_API_HOST") else "adapt"
+    cfg["profile"] = profile
+    cfg["paths"] = cfg["profiles"][profile]
+    cfg["config_path"] = str(path)
+    cfg["config_sha1"] = hashlib.sha1(path.read_bytes()).hexdigest()[:12]
+    return cfg
+
+
+def provenance(cfg, **extra):
+    """Metadata recorded with every output: code commit, config version/hash, SlideRule version, date."""
+    try:
+        commit = subprocess.run(["git", "-C", str(REPO_DIR), "rev-parse", "--short", "HEAD"],
+                                capture_output=True, text=True).stdout.strip()
+        dirty = bool(subprocess.run(["git", "-C", str(REPO_DIR), "status", "--porcelain", "lib", "config"],
+                                    capture_output=True, text=True).stdout.strip())
+    except Exception:
+        commit, dirty = "unknown", None
+    try:
+        import sliderule
+        sr_client = sliderule.__version__
+    except Exception:
+        sr_client = None
+    meta = {"repo": "circumpolar_boreal_trends", "git_commit": commit, "git_dirty_lib_or_config": dirty,
+            "config_version": cfg["version"], "config_sha1": cfg["config_sha1"],
+            "sliderule_client": sr_client, "processed_utc": dt.datetime.utcnow().isoformat(timespec="seconds")}
+    meta.update(extra)
+    return meta
+
+
+def write_parquet(df, path, meta):
+    """Write a (Geo)DataFrame to parquet with provenance in the file metadata (key 'atl03_reclass')."""
+    import pyarrow.parquet as pq
+    path = str(path)
+    if not path.startswith("s3://"):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(df, gpd.GeoDataFrame):
+        df.to_parquet(path)
+    else:
+        df.to_parquet(path, index=False)
+    if not path.startswith("s3://"):
+        table = pq.read_table(path)
+        md = dict(table.schema.metadata or {})
+        md[b"atl03_reclass"] = json.dumps(meta, default=str).encode()
+        pq.write_table(table.replace_schema_metadata(md), path)
+    return path
+
+
+def read_provenance(path):
+    import pyarrow.parquet as pq
+    md = pq.read_schema(path).metadata or {}
+    return json.loads(md.get(b"atl03_reclass", b"{}"))
+
+
+# ============================================================ granules (CMR) and SlideRule
+
+def granules_from_cmr(geom, years, months, short_name="ATL03", release="007"):
+    """ATL03/ATL08 granule names intersecting geom (lon/lat shapely geometry) in the given years and months.
+    Looked up in CMR directly so the exact release and inputs are explicit and recorded."""
+    w, s, e, n = geom.bounds
+    names = []
+    for y in years:
+        url = "https://cmr.earthdata.nasa.gov/search/granules.json"
+        params = {"short_name": short_name, "version": release, "bounding_box": f"{w},{s},{e},{n}",
+                  "temporal": f"{y}-{min(months):02d}-01T00:00:00Z,{y}-{max(months):02d}-30T23:59:59Z",
+                  "page_size": 2000}
+        r = requests.get(url, params=params, timeout=120)
+        r.raise_for_status()
+        for g in r.json()["feed"]["entry"]:
+            name = g.get("producer_granule_id") or g["title"].split(":")[-1]
+            if int(g["time_start"][5:7]) in months:
+                names.append(name)
+    return sorted(set(names))
+
+
+def sliderule_init(organization=None, verbose=False):
+    import sliderule
+    if organization:
+        sliderule.init("slideruleearth.io", organization=organization, verbose=verbose, desired_nodes=5,
+                       time_to_live=720)
+    else:
+        sliderule.init(verbose=verbose)
+    return sliderule
+
+
+def to_sliderule_poly(geom):
+    """Shapely polygon (lon/lat) -> SlideRule poly (counter-clockwise list of lat/lon dicts)."""
+    from shapely.geometry import polygon as shp_polygon
+    g = shp_polygon.orient(geom.convex_hull if geom.geom_type != "Polygon" else geom, sign=1.0)
+    return [{"lon": float(x), "lat": float(y)} for x, y in g.exterior.coords]
+
+
+def fetch_photons(geom, granules, cfg, with_atl08_fields=True):
+    """All ATL03 photons (signal and background) in geom from the named granules, with ATL08 v007 classes,
+    the ATL03 v007 photon weight (YAPC score) and shot identifiers. Returns a GeoDataFrame (EPSG:7912)."""
+    import sliderule
+    ic = cfg["icesat2"]
+    parms = {
+        "poly": to_sliderule_poly(geom),
+        "srt": 0,
+        "cnf": ic["atl03_cnf"],
+        "quality_ph": ic["quality_ph"],
+        "atl08_class": ["atl08_noise", "atl08_ground", "atl08_canopy", "atl08_top_of_canopy",
+                        "atl08_unclassified"],
+        "yapc": {"version": 0, "score": 0},
+        "atl03_ph_fields": ["ph_id_pulse", "pce_mframe_cnt"],
+    }
+    if with_atl08_fields:
+        parms["atl08_fields"] = ["segment_snowcover", "segment_landcover", "msw_flag"]
+    return _run_by_granule("atl03x", parms, granules, cfg, add_fields=True)
+
+
+def _run_by_granule(api, parms, granules, cfg, add_fields=False):
+    """One SlideRule request for all granules; on failure, one request per granule (failures logged)."""
+    import sliderule
+    if not granules:
+        return gpd.GeoDataFrame()
+    try:
+        frames = [sliderule.run(api, parms, resources=list(granules))]
+    except Exception as err:
+        print(f"  batch request failed ({err}); retrying per granule")
+        frames = []
+        for g in granules:
+            try:
+                frames.append(sliderule.run(api, parms, resources=[g]))
+            except Exception as err2:      # one bad granule must not stop the request
+                print(f"  {g}: {err2}")
+    frames = [f for f in frames if f is not None and len(f)]
+    if not frames:
+        return gpd.GeoDataFrame()
+    out = gpd.GeoDataFrame(pd.concat(frames), crs=frames[0].crs).reset_index()
+    lut = {granule_parts(g): g for g in granules}
+    out["granule"] = [lut.get((r, c, rg)) for r, c, rg in zip(out["rgt"], out["cycle"], out["region"])]
+    if add_fields:
+        out = add_photon_fields(out, cfg)
+    else:
+        out["track_id"] = out["rgt"].astype(str) + "_" + out["cycle"].astype(str) + "_" + out["gt"].astype(str)
+    return out
+
+
+def add_photon_fields(gdf, cfg):
+    """Derived per-photon fields: time, year, doy, strong beam flag, shot id, lon/lat."""
+    tcol = "time_ns" if "time_ns" in gdf else "time"
+    t = pd.to_datetime(gdf[tcol])
+    gdf["year"], gdf["month"], gdf["doy"] = t.dt.year, t.dt.month, t.dt.dayofyear
+    gdf["strong"] = gdf["spot"].isin(cfg["icesat2"]["strong_spots"])
+    gdf["lon"], gdf["lat"] = gdf.geometry.x, gdf.geometry.y
+    if "pce_mframe_cnt" in gdf and "ph_id_pulse" in gdf:
+        gdf["shot"] = gdf["pce_mframe_cnt"].astype("int64") * 1000 + gdf["ph_id_pulse"].astype("int64")
+    gdf["track_id"] = gdf["rgt"].astype(str) + "_" + gdf["cycle"].astype(str) + "_" + gdf["gt"].astype(str)
+    return gdf
+
+
+def fetch_phoreal(geom, granules, cfg):
+    """30 m segments from SlideRule PhoREAL with ATL08 v007 classes: the same processing as our current
+    v7 training files (process_atl08_boreal.py), for a like-for-like comparison."""
+    import sliderule
+    seg = cfg["segments"]
+    parms = {
+        "poly": to_sliderule_poly(geom), "srt": 0, "len": seg["length_m"], "res": seg["length_m"],
+        "pass_invalid": True,
+        "atl08_class": ["atl08_ground", "atl08_canopy", "atl08_top_of_canopy"],
+        "atl08_fields": ["canopy/h_canopy_uncertainty", "h_dif_ref", "msw_flag", "sigma_topo",
+                         "segment_landcover", "canopy/segment_cover", "segment_snowcover",
+                         "terrain/h_te_uncertainty"],
+        "phoreal": dict(seg["phoreal"]),
+    }
+    return _run_by_granule("atl03x", parms, granules, cfg)
+
+
+# ============================================================ reference photon labels
+
+def reference_label(h, ref_ground, ref_canopy_top, cfg):
+    """Label photons from reference ground and canopy-top heights summarised over the footprint
+    (after Purslow et al. 2023, Fig. 1): ground and canopy windows, buffers, noise beyond the buffers.
+    h, ref_ground, ref_canopy_top: arrays of absolute heights in the same vertical datum."""
+    rl = cfg["reference_labels"]
+    h, g, top = map(np.asarray, (h, ref_ground, ref_canopy_top))
+    dz = h - g
+    canopy_top = np.maximum(top - g, 0) + rl["canopy_top_buffer_m"]
+    lab = np.full(h.shape, "buffer", dtype=object)
+    lab[np.abs(dz) <= rl["ground_halfwidth_m"]] = "ground"
+    can = (dz > rl["ground_halfwidth_m"]) & (dz <= canopy_top)
+    lab[can] = "canopy"
+    lab[(dz > canopy_top + rl["noise_buffer_m"]) | (dz < -rl["ground_halfwidth_m"] - rl["noise_buffer_m"])] = "noise"
+    lab[~np.isfinite(dz) | ~np.isfinite(top)] = "none"
+    return lab
+
+
+# ============================================================ reclassifier
+
+def expected_noise_count(background_rate, cfg):
+    """Expected background photons in the noise-filter window around a photon (Poisson mean).
+    background_rate [photons/s] x window time (2 x height / c) x shots in the along-track window."""
+    nz = cfg["reclass"]["noise"]
+    window_s = 2 * (2 * nz["window_vert_m"]) / C_LIGHT
+    shots = 2 * nz["window_along_m"] / cfg["icesat2"]["shot_spacing_m"]
+    return np.asarray(background_rate, float) * window_s * shots
+
+
+def noise_filter(x, h, background_rate, cfg):
+    """Step 1. Signal where the local photon count clearly exceeds the expected background count.
+    Box window: +/- window_along_m along track, +/- window_vert_m vertically."""
+    nz = cfg["reclass"]["noise"]
+    scale = nz["window_along_m"] / nz["window_vert_m"]
+    pts = np.column_stack([x, h * scale])
+    tree = cKDTree(pts)
+    count = tree.query_ball_point(pts, r=nz["window_along_m"], p=np.inf, return_length=True) - 1
+    lam = expected_noise_count(background_rate, cfg)
+    thresh = np.maximum(lam + nz["k_sigma"] * np.sqrt(lam), nz["min_count"])
+    return count >= thresh, count, lam
+
+
+def _rolling_median(v, n):
+    return pd.Series(v).rolling(n, center=True, min_periods=1).median().to_numpy()
+
+
+def ground_surface(x, h, signal, cfg):
+    """Step 2. Ground surface from the lower envelope of signal photons, refined iteratively.
+    Returns the surface height at every photon and the along-track ground spread (robust sigma)."""
+    gc = cfg["reclass"]["ground"]
+    edges = np.arange(np.floor(x.min()), x.max() + gc["bin_m"], gc["bin_m"])
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    b = np.clip(np.digitize(x, edges) - 1, 0, len(centers) - 1)
+    xs, hs, bs = x[signal], h[signal], b[signal]
+    if len(xs) < 3:
+        return np.full_like(h, np.nan, dtype=float), np.full_like(h, np.nan, dtype=float)
+    df = pd.DataFrame({"b": bs, "h": hs})
+    env = df.groupby("b")["h"].quantile(gc["envelope_pct"] / 100.0)
+    surf_bins = np.full(len(centers), np.nan)
+    surf_bins[env.index.to_numpy()] = env.to_numpy()
+    sigma_bins = np.full(len(centers), np.nan)
+    for _ in range(gc["n_iter"]):
+        valid = np.isfinite(surf_bins)
+        if valid.sum() < 2:
+            break
+        filled = np.interp(centers, centers[valid], surf_bins[valid])
+        filled = _rolling_median(filled, gc["smooth_bins"])
+        surf_ph = np.interp(xs, centers, filled)
+        near = np.abs(hs - surf_ph) <= gc["halfwidth_m"]
+        if near.sum() < 3:
+            break
+        d = pd.DataFrame({"b": bs[near], "r": hs[near] - surf_ph[near]})
+        med = d.groupby("b")["r"].median()
+        mad = d.groupby("b")["r"].apply(lambda r: 1.4826 * np.median(np.abs(r - np.median(r))))
+        surf_bins = np.full(len(centers), np.nan)
+        surf_bins[med.index.to_numpy()] = filled[med.index.to_numpy()] + med.to_numpy()
+        sigma_bins = np.full(len(centers), np.nan)
+        sigma_bins[mad.index.to_numpy()] = mad.to_numpy()
+    valid = np.isfinite(surf_bins)
+    if valid.sum() < 2:
+        return np.full_like(h, np.nan, dtype=float), np.full_like(h, np.nan, dtype=float)
+    filled = _rolling_median(np.interp(centers, centers[valid], surf_bins[valid]), gc["smooth_bins"])
+    sv = np.isfinite(sigma_bins)
+    sig = np.interp(centers, centers[sv], sigma_bins[sv]) if sv.sum() >= 2 else np.full(len(centers), gc["halfwidth_m"] / 2)
+    return np.interp(x, centers, filled), np.interp(x, centers, sig)
+
+
+def classify_track(x, h, background_rate, cfg):
+    """Steps 1-3 for one granule x beam track. Returns (class, relief, signal, ground_sigma)."""
+    cc = cfg["reclass"]["canopy"]
+    gc = cfg["reclass"]["ground"]
+    order = np.argsort(x)
+    inv = np.empty_like(order)
+    inv[order] = np.arange(len(order))
+    x, h, br = np.asarray(x, float)[order], np.asarray(h, float)[order], np.asarray(background_rate, float)[order]
+
+    signal, _, _ = noise_filter(x, h, br, cfg)
+    surf, gsig = ground_surface(x, h, signal, cfg)
+    relief = h - surf
+    cls = np.zeros(len(h), dtype=np.int8)
+    cls[signal & (np.abs(relief) <= gc["halfwidth_m"])] = 1
+    min_rel = np.maximum(cc["min_relief_m"], cc["ground_sigma_k"] * np.nan_to_num(gsig, nan=0.0))
+    cls[signal & (relief > min_rel) & (relief <= cc["max_relief_m"])] = 2
+
+    if cc["toc_recovery"]:
+        # canopy envelope: rolling max of canopy relief along track
+        can = cls == 2
+        if can.sum() > 0:
+            s = pd.Series(np.where(can, relief, np.nan), index=x)
+            env = s.rolling(window=int(max(3, cc["toc_window_m"] / 0.7)), center=True, min_periods=1).max().to_numpy()
+            cand = (~signal) & (relief > min_rel) & (relief <= np.nan_to_num(env, nan=-1) + cc["toc_max_above_m"]) \
+                   & (relief > np.nan_to_num(env, nan=np.inf) - 1.0) & (relief <= cc["max_relief_m"])
+            if cand.any():
+                xc = x[cand]
+                tree = cKDTree(xc[:, None])
+                nn = tree.query_ball_point(xc[:, None], r=cc["toc_window_m"], return_length=True) - 1
+                idx = np.where(cand)[0][nn >= cc["toc_min_neighbours"]]
+                cls[idx] = 3
+    return cls[inv], relief[inv], signal[inv], gsig[inv]
+
+
+def reclassify(photons, cfg):
+    """Apply the reclassifier to every track. Adds class_new, relief_new, signal_new, ground_sigma_new."""
+    photons = photons.copy()
+    n = len(photons)
+    cls_all = np.zeros(n, dtype="int8")
+    rel_all = np.full(n, np.nan)
+    sig_all = np.zeros(n, dtype=bool)
+    gs_all = np.full(n, np.nan)
+    pos = pd.Series(np.arange(n), index=photons.index)
+    for _, idx in photons.groupby("track_id").groups.items():
+        sub = photons.loc[idx]
+        if len(sub) < 10:
+            continue
+        cls, rel, sig, gs = classify_track(sub["x_atc"].to_numpy(), sub["height"].to_numpy(),
+                                           sub["background_rate"].to_numpy(), cfg)
+        p = pos.loc[idx].to_numpy()
+        cls_all[p], rel_all[p], sig_all[p], gs_all[p] = cls, rel, sig, gs
+    photons["class_new"], photons["relief_new"] = cls_all, rel_all
+    photons["signal_new"], photons["ground_sigma_new"] = sig_all, gs_all
+    return photons
+
+
+def native_relief(photons, cfg):
+    """Relief of every photon above a ground surface interpolated from ATL08 ground photons, using the
+    same smoothing as the new classifier, so native and new segments differ only in classification."""
+    photons = photons.copy()
+    photons["relief_atl08"] = np.nan
+    gc = cfg["reclass"]["ground"]
+    for _, idx in photons.groupby("track_id").groups.items():
+        sub = photons.loc[idx].sort_values("x_atc")
+        g = sub[sub["atl08_class"] == 1]
+        if len(g) < 2:
+            continue
+        edges = np.arange(np.floor(sub["x_atc"].min()), sub["x_atc"].max() + gc["bin_m"], gc["bin_m"])
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        b = np.clip(np.digitize(g["x_atc"], edges) - 1, 0, len(centers) - 1)
+        med = pd.Series(g["height"].to_numpy()).groupby(b).median()
+        surf = np.interp(centers, centers[med.index.to_numpy()], med.to_numpy())
+        photons.loc[sub.index, "relief_atl08"] = sub["height"].to_numpy() - np.interp(sub["x_atc"], centers, surf)
+    return photons
+
+
+# ============================================================ 30 m segments
+
+def _pct(v, q):
+    return np.percentile(v, q) if len(v) else np.nan
+
+
+def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new", scheme="new"):
+    """30 m along-track segments from classified photons (one row per track x segment).
+
+    Canopy-only RH (ATL08 style: rh{p} of canopy-photon relief) and GEDI-style RH over ground + canopy
+    photons (Purslow et al. 2023, Sec. 2.3.3; ground photons enter at their relief). Photon rates per shot
+    are background-corrected with the ATL03 background rate (expected noise in each class window), a
+    simplification of Purslow et al. Sec. 2.2 that does not need the telemetry window length."""
+    seg = cfg["segments"]
+    L = seg["length_m"]
+    gh = cfg["reclass"]["ground"]["halfwidth_m"]
+    sv = cfg["reclass"]["short_veg"]
+    rows = []
+    canopy_classes = (2, 3)
+    for tid, sub in photons.groupby("track_id"):
+        sub = sub[np.isfinite(sub[relief_col])] if relief_col in sub else sub
+        if not len(sub):
+            continue
+        sid = np.floor(sub["x_atc"].to_numpy() / L).astype(np.int64)
+        for s, ph in sub.groupby(sid):
+            cls = ph[class_col].to_numpy()
+            rel = ph[relief_col].to_numpy()
+            can = np.isin(cls, canopy_classes)
+            gr = cls == 1
+            if (can.sum() + gr.sum()) < seg["min_photons"]:
+                continue
+            n_shots = ph["shot"].nunique() if "shot" in ph else max(1, int(np.ptp(ph["x_atc"]) / cfg["icesat2"]["shot_spacing_m"]))
+            br = float(ph["background_rate"].median())
+            noise_per_m_shot = br * 2 / C_LIGHT
+            can_rel = rel[can]
+            h_can = _pct(can_rel, 98)
+            can_window = (np.nanmax(can_rel) - gh) if can.any() else 0.0
+            r = {"track_id": tid, "seg": int(s), "scheme": scheme,
+                 "rgt": ph["rgt"].iat[0], "cycle": ph["cycle"].iat[0], "gt": ph["gt"].iat[0],
+                 "spot": ph["spot"].iat[0], "strong": bool(ph["strong"].iat[0]),
+                 "granule": ph["granule"].iat[0] if "granule" in ph else None,
+                 "x_atc": float(ph["x_atc"].mean()), "lon": float(ph["lon"].mean()), "lat": float(ph["lat"].mean()),
+                 "lon0": float(ph.loc[ph["x_atc"].idxmin(), "lon"]), "lat0": float(ph.loc[ph["x_atc"].idxmin(), "lat"]),
+                 "lon1": float(ph.loc[ph["x_atc"].idxmax(), "lon"]), "lat1": float(ph.loc[ph["x_atc"].idxmax(), "lat"]),
+                 "year": int(ph["year"].iat[0]), "doy": int(ph["doy"].iat[0]),
+                 "solar_elevation": float(ph["solar_elevation"].median()), "background_rate": br,
+                 "n_shots": n_shots, "n_ground": int(gr.sum()), "n_canopy": int(can.sum()),
+                 "n_noise": int((cls == 0).sum()),
+                 "h_te_median": float(np.median(ph["height"].to_numpy()[gr])) if gr.any() else np.nan,
+                 "h_canopy": h_can, "h_max_canopy": _pct(can_rel, 100), "h_mean_canopy": float(np.mean(can_rel)) if can.any() else np.nan}
+            for p in seg["rh_percentiles"]:
+                r[f"rh{p}"] = _pct(can_rel, p)
+            sig_rel = np.concatenate([np.clip(rel[gr], 0, None), can_rel])
+            for p in seg["rh_percentiles"]:
+                r[f"rh{p}_gedi"] = _pct(sig_rel, p)
+            r["Evr"] = can.sum() / n_shots
+            r["Egr"] = gr.sum() / n_shots
+            r["Ev"] = max(r["Evr"] - noise_per_m_shot * max(can_window, 0), 0.0)
+            r["Eg"] = max(r["Egr"] - noise_per_m_shot * 2 * gh, 0.0)
+            for c in ("segment_snowcover", "segment_landcover", "msw_flag", "atl03_cnf"):
+                if c in ph:
+                    r[c] = ph[c].mode().iat[0]
+            rows.append(r)
+    out = pd.DataFrame(rows)
+    if not len(out):
+        return out
+    if scheme == "new":
+        out["canopy_signal_photons"] = out["Ev"] * out["n_shots"]
+        out["short_veg_flag"] = ((out["n_canopy"] < sv["min_canopy_photons"]) | (out["h_canopy"] < sv["min_resolvable_m"])
+                                 | out["h_canopy"].isna() | (out["canopy_signal_photons"] < sv.get("min_canopy_signal_photons", 0)))
+        out["h_canopy_raw"] = out["h_canopy"]
+        out.loc[out["short_veg_flag"], "h_canopy"] = 0.0
+    return gpd.GeoDataFrame(out, geometry=gpd.points_from_xy(out["lon"], out["lat"]), crs="EPSG:4326")
+
+
+# ============================================================ canopy cover (Purslow et al. 2023)
+
+def fit_reflectance_ratio(segs, cfg, track_col="track_id"):
+    """Canopy:ground reflectance ratio rho_v/rho_g from background-corrected photon rates.
+
+    Orthogonal least squares of Ev on Eg with one slope shared by all tracks (slope = -rho_v/rho_g) and a
+    free intercept per track (Ev at 100% cover; varies with atmospheric transmission). Each track is
+    weighted by Pearson r^2 of Ev vs Eg (Purslow et al. 2023, Sec. 2.2; Armston et al. 2013).
+    Returns dict(ratio, slope, tracks=DataFrame[track, n, r2, Ev100, Eg0, used])."""
+    cv = cfg["cover"]
+    d = segs[[track_col, "Ev", "Eg"]].dropna()
+    stats = []
+    for t, g in d.groupby(track_col):
+        r = np.corrcoef(g["Eg"], g["Ev"])[0, 1] if len(g) > 2 and g["Eg"].std() > 0 and g["Ev"].std() > 0 else np.nan
+        stats.append({"track": t, "n": len(g), "r": r})
+    st = pd.DataFrame(stats)
+    use = st[(st["n"] >= cv["min_segments_per_track"]) & (st["r"] < 0)].copy()   # cover trade-off -> negative r
+    use["w"] = use["r"] ** 2
+    if len(use) < 1:
+        return {"ratio": np.nan, "slope": np.nan, "tracks": st.assign(used=False)}
+    tracks = use["track"].tolist()
+    dd = d[d[track_col].isin(tracks)]
+    ti = dd[track_col].map({t: i for i, t in enumerate(tracks)}).to_numpy()
+    w = dd[track_col].map(dict(zip(use["track"], use["w"]))).to_numpy()
+    x, y = dd["Eg"].to_numpy(), dd["Ev"].to_numpy()
+    a0 = np.array([max(y[ti == i].max(), 0.1) for i in range(len(tracks))])
+
+    def resid(p):
+        m, a = p[0], p[1:]
+        return np.sqrt(w) * (y - a[ti] - m * x) / np.sqrt(1 + m * m)
+
+    sol = least_squares(resid, np.concatenate([[-1.0], a0]), method="lm")
+    m, a = sol.x[0], sol.x[1:]
+    use["Ev100"] = a
+    use["Eg0"] = -a / m if m != 0 else np.nan
+    use["used"] = (use["Ev100"] > cv["min_rate_per_shot"]) & (use["Eg0"] > cv["min_rate_per_shot"])
+    st = st.merge(use[["track", "w", "Ev100", "Eg0", "used"]], on="track", how="left")
+    st["used"] = st["used"].fillna(False)
+    if st["used"].sum() and st["used"].sum() < len(tracks):   # refit on the tracks that pass the rate filter
+        sub = segs[segs[track_col].isin(st.loc[st["used"], "track"])]
+        return fit_reflectance_ratio(sub, cfg, track_col) | {"tracks_all": st}
+    return {"ratio": float(-m), "slope": float(m), "tracks": st}
+
+
+def canopy_cover(n_canopy, n_ground, ratio):
+    """cv = 1 / (1 + (rho_v/rho_g) * Ng / Nv)   (Ni-Meister et al. 2001; Armston et al. 2013; Purslow et al. 2023 eq. 1)."""
+    nv = np.asarray(n_canopy, float)
+    ng = np.asarray(n_ground, float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cv = 1.0 / (1.0 + ratio * ng / nv)
+    cv = np.where(nv <= 0, 0.0, cv)
+    return np.where((nv + ng) <= 0, np.nan, cv)
+
+
+# ============================================================ helpers
+
+def track_profile(photons, track_id, x0=None, length=None):
+    """Photons of one track, optionally a window [x0, x0 + length] of along-track distance (m)."""
+    p = photons[photons["track_id"] == track_id].sort_values("x_atc")
+    if x0 is not None:
+        p = p[(p["x_atc"] >= x0) & (p["x_atc"] <= x0 + (length or 1e9))]
+    return p
+
+
+# ============================================================ production (one tile x one year)
+
+def granule_parts(name):
+    """ATL03_YYYYMMDDhhmmss_RRRRCCSS_VVV_RR.h5 -> (rgt, cycle, region)."""
+    p = name.split("_")[2]
+    return int(p[0:4]), int(p[4:6]), int(p[6:8])
+
+
+def process_tile(tile_geom, tile_num, year, cfg, out_dir, months=None, spots=None, write_photons=False):
+    """Reclassified 30 m segments for one tile and year, in the schema of our v7 files plus new columns.
+    One SlideRule request per granule (failures are logged and skipped). Returns (segments, log)."""
+    months = months or cfg["icesat2"]["months"]
+    granules = granules_from_cmr(tile_geom, [year], months, release=cfg["icesat2"]["release"])
+    log, frames = [], []
+    for g in granules:
+        ph = fetch_photons(tile_geom, [g], cfg)
+        if spots is not None and len(ph):
+            ph = ph[ph["spot"].isin(spots)]
+        log.append({"granule": g, "n_photons": len(ph)})
+        if not len(ph):
+            continue
+        ph = reclassify(ph, cfg)
+        seg = segment_metrics(ph, cfg)
+        if len(seg):
+            frames.append(seg)
+        if write_photons:
+            write_parquet(ph, Path(out_dir) / "photons" / f"{tile_num:07d}_{g.replace('.h5', '')}.parquet",
+                          provenance(cfg, granule=g))
+    log = pd.DataFrame(log)
+    if not frames:
+        return gpd.GeoDataFrame(), log
+    segs = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), crs="EPSG:4326")
+    segs = segs[segs.within(tile_geom)] if tile_geom is not None else segs
+    segs["tile_num"] = tile_num
+    fn = Path(out_dir) / f"atl08_reclass_{cfg['icesat2']['release']}_030m_{year}_{min(months):02d}_{max(months):02d}_v{cfg['version']}_{tile_num:07d}.parquet"
+    write_parquet(segs, fn, provenance(cfg, tile_num=tile_num, year=year, months=months,
+                                       granules=granules, n_granules=len(granules)))
+    return segs, log
+
+
+def match_segments(a, b, cols, max_dist_m=20.0, suffix="_b"):
+    """For each segment in a, the nearest segment in b on the same track (track_id) within max_dist_m.
+    Adds b's `cols` with `suffix`. Both inputs need lon/lat geometry (EPSG:4326)."""
+    utm = a.estimate_utm_crs()
+    a2, b2 = a.to_crs(utm), b.to_crs(utm)
+    out = []
+    for tid, ga in a2.groupby("track_id"):
+        gb = b2[b2["track_id"] == tid]
+        if not len(gb):
+            out.append(ga)
+            continue
+        j = gpd.sjoin_nearest(ga, gb[cols + ["geometry"]].rename(columns={c: c + suffix for c in cols}),
+                              how="left", max_distance=max_dist_m, distance_col="match_dist_m")
+        out.append(j[~j.index.duplicated()].drop(columns="index_right", errors="ignore"))
+    return gpd.GeoDataFrame(pd.concat(out), crs=utm).to_crs(4326)
