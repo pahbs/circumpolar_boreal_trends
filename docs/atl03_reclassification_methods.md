@@ -159,14 +159,23 @@ The validation data (interior Alaska, Kenai, Seward Peninsula) cover a small par
    The sensitivity grid in notebook 03 reports per region, not pooled.
 4. **Prefer simple rules to many parameters.** The random-forest benchmark (notebook 03) is a check, not the product; a learned
    classifier would only be adopted with region-held-out evidence and features that exist everywhere.
-5. **Widen validation before scaling out:** Canadian and Alaskan LVIS 2017/2019 gridded heights (`tiles/lvis_2017_2019_tiles_NA.csv`),
-   Fennoscandian national ALS (Finland, Sweden, Norway), and any Siberian ALS or field data, to cover Eurasian forest types,
-   higher sun angles at lower latitudes, polar day, and snow conditions.
+5. **Widen validation before scaling out:** gridded LVIS 2017/2019 (`ABoVE_LVIS_VegetationStructure_1923`; Alaska, NWT, Yukon;
+   `tiles/lvis_2017_2019_tiles_NA.csv`), NEON AOP (BONA, DEJU, HEAL, TOOL, BARR; UNDE, STEI, TREE), Canadian provincial lidar
+   (Québec MRNF, Ontario FRI, BC), Fennoscandian national ALS (Finland NLS, Sweden Lantmäteriet, Norway Kartverket) and Estonia,
+   to cover Eurasian forest types, higher sun angles at lower latitudes, polar day, and snow. No open airborne lidar was found
+   for Siberia; there, field plots.
 6. **Check across years and conditions:** the same tile in different years should give consistent heights where nothing
    changed (stable-forest test), across solar elevation, beam strength, and early vs late in the June–September season.
 7. **The reflectance ratio needs a map, not a constant.** ρv/ρg varies with ground type; a circumpolar ratio (e.g. by land
    cover × region, fitted from ICESat-2 itself) replaces the fallback before cover is used outside the validation sites.
 8. **Report out-of-region performance** in every results summary, not only the pooled numbers.
+9. **Tall forest must not get worse (acceptance criterion from v0.2).** These heights train the circumpolar AGBD models, so a
+   height bias that grows with height becomes a biomass bias concentrated where most carbon is. In each reference-height class
+   ≥ 10 m and each region, the mean bias of the new 30 m segments must be no more negative than that of the current v7 30 m
+   segments. A version that fixes short vegetation but fails this is not adopted.
+10. **Strata reported for every version:** reference-height class × region × slope class (0–5°, 5–10°, 10–20°, > 20°) ×
+   forest / non-forest, with slope and forest from circumpolar layers (Copernicus GLO-30, ESA WorldCover) and, as a check, from
+   the reference DTM and CHM.
 
 ## 8. Version history
 
