@@ -13,7 +13,8 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (15 Oct 2026, night):** v0.2 committed (`c8efd09`) and in the deck. **v0.3 in progress**
+**Status (16 Oct 2026):** v0.3 short-vegetation gains are mostly zeros (entry 16 Oct, "Correction"); v0.4 = the 0 m rule.
+**Earlier status (15 Oct 2026, night):** v0.2 committed (`c8efd09`) and in the deck. **v0.3 in progress**
 (`config/atl03_reclass_v0.3.yaml`): noise-robust canopy top (diagnosed from impossible > 30 m tundra heights); independent
 LVIS 2019 validation done (notebook 09: false vegetation 47 % → 12 %, tall forest nearly unbiased, coverage ~62 %);
 CanElevation lidar 2019–2025 done (notebook 10: false vegetation 30 % → 9 %; night / weak-beam canopy now
@@ -44,6 +45,38 @@ NEON needs an API token (Paul to create). Canopy cover on hold.
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-16 · Correction: v0.3's short-vegetation "gains" are mostly zeros (Paul Montesano's review)
+
+The improvements reported for short vegetation (spurious vegetation 47 → 12 %, LVIS 0–1 m bias +3.4 → +0.7 m) come largely
+from **segments set to 0 m**, not from better heights. Common segments, share of h_canopy = 0 and bias of non-zero heights:
+
+| LVIS RH98 class | 0–1 m | 1–2 m | 2–5 m | 5–10 m | 10–15 m | 15+ m |
+|---|---|---|---|---|---|---|
+| zero share, PhoREAL 30 m (training data today) | 44 % | 9 % | 5 % | 1 % | 0 % | 1 % |
+| zero share, v0.3 | 87 % | 44 % | 27 % | 12 % | 7 % | 6 % |
+| bias of non-zero heights, PhoREAL 30 m (m) | +2.8 | +3.0 | +2.7 | +1.8 | +0.4 | −1.7 |
+| bias of non-zero heights, v0.3 (m) | +5.2 | +4.1 | +3.5 | +3.2 | +2.6 | +1.8 |
+
+CanElevation shows the same (v0.3 zeros 56 % at 1–2 m, 41 % at 2–5 m vs 12 %, 9 %). Consequences: (1) where v0.3 reports
+a short-vegetation height it is **more** overestimated than today; (2) 6–12 % of segments in forest ≥ 5 m are wrongly 0 m
+(−7 to −18 m each); (3) mean bias and the spurious-vegetation rate reward zeroing and must not be used alone. Cause: the
+v0.2/v0.3 0 m rule (enough total signal but weak canopy evidence: < 3 canopy photons, < 5 background-corrected canopy
+photons, or RH98 < 0.6 m); background correction leaves few canopy photons over real shrubs and sparse canopy by day.
+The "solved for this stage" reading in the CanElevation entry below is withdrawn.
+
+**Reporting from now on:** zero rate by reference height class (correct below ~1 m, wrong above ~2 m) and accuracy of
+non-zero heights, alongside bias / RMSE; **r² instead of r** (r was a default in the scatter helper; r² is the convention).
+LVIS r² by stratum, PhoREAL 30 m → v0.3: day strong 0.32 → 0.44, day weak 0.08 → 0.25, night strong 0.14 → 0.41,
+night weak 0.42 → 0.53.
+
+**Proposed names (pending Paul's confirmation):** "current v7 30 m (ATL08 classes → PhoREAL)" → **ATL08 v7 30 m
+(PhoREAL)**; "ATL08 classes → our 30 m (check)" → **ATL08 v7 30 m (our binning)**; v0.x → **reclassified v0.x 30 m**. The
+PhoREAL segments are ATL03 photons with ATL08 v007 photon classes binned to 30 m by SlideRule, not the ATL08 100 m product;
+the 100 m h_canopy could be added as a separate baseline.
+
+**v0.4 priority:** the 0 m rule. Report 0 m only with strong ground signal and enough photons above ground to have detected
+canopy; otherwise "not enough signal". Judge on zero rate by class and non-zero accuracy.
 
 ## 2026-10-16 · Independent validation 2: Canadian lidar, NRCan CanElevation 2019–2025 (notebook 10)
 
