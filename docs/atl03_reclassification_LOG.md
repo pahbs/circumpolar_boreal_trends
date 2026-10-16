@@ -13,9 +13,12 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (15 Oct 2026, evening):** v0.2 run complete (notebooks 00–08, `runs/v0.2/`). Tall forest now **less**
-underestimated than the current v7 30 m in 5 of 6 region × class cells ≥ 10 m (fails Kenai 10–15 m by 0.12 m); short
-vegetation still overestimated where heights are reported; canopy cover still not usable. Not adopted yet. v0.3 list below.
+**Status (15 Oct 2026, night):** v0.2 committed (`c8efd09`) and in the deck. **v0.3 in progress**
+(`config/atl03_reclass_v0.3.yaml`): noise-robust canopy top (diagnosed from impossible > 30 m tundra heights); independent
+LVIS 2019 validation done (notebook 09: false vegetation 47 % → 12 %, tall forest nearly unbiased, coverage ~62 %);
+CanElevation lidar 2019–2025 done (notebook 10: false vegetation 30 % → 9 %; night / weak-beam canopy now
+underestimated, the next fix).
+NEON needs an API token (Paul to create). Canopy cover on hold.
 
 **v0.3 (proposed, in order):**
 1. Short-vegetation overestimate (G-LiHT 0–1 m: +3.0 m; Seward 1–2 m: +2.3 m where reported): find which photons set RH98.
@@ -41,6 +44,127 @@ vegetation still overestimated where heights are reported; canopy cover still no
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-16 · Independent validation 2: Canadian lidar, NRCan CanElevation 2019–2025 (notebook 10)
+
+Up to 3 random projects per province / territory (2019–2025, boreal tiles, no cities), 2 random 4 km boxes each; 1 m CHM =
+DSM − DTM read from the remote COGs; ICESat-2 June–September of the lidar year. 57 boxes: 48 with photons, 5 without
+photons, 4 without lidar data. 13,807 segments in 13 provinces / territories / agencies; **6,615 common segments**;
+38 % from leaf-on (June–September) projects. Reference = CHM RH98 in each footprint (as G-LiHT, notebook 05).
+
+| Common segments, mean bias (m) | current v7 30 m | check | v0.2 | v0.3 |
+|---|---|---|---|---|
+| CHM 0–1 m (2,871) | +1.74 | +2.00 | +0.67 | **+0.58** |
+| 1–2 m (241) | +2.25 | +2.32 | +1.74 | **+1.48** |
+| 2–5 m (758) | +0.47 | +0.44 | −0.02 | −0.26 |
+| 5–10 m (1,025) | −0.88 | −0.94 | −0.86 | −1.18 |
+| 10–15 m (651) | −2.40 | −1.97 | −2.33 | −2.60 |
+| 15–20 m (558) | −3.85 | −2.22 | −2.42 | **−2.69** |
+| 20+ m (511) | −5.21 | −3.54 | −3.20 | **−3.35** |
+
+- **Spurious vegetation** (CHM < 1 m, ICESat-2 > 2 m): current v7 30.2 % → v0.3 **9.3 %**; lower in every region except BC
+  (20 segments, 100 % in every version, including v7: ICESat-2 6–9 m where CHM < 1 m; more likely a reference issue, e.g.
+  steep terrain or harvest after the lidar, than the method; to check).
+- **Tall forest:** v0.3 less underestimated than v7 at 15–20 m and 20+ m (all regions), slightly more at 10–15 m
+  (−2.60 vs −2.40). Acceptance criterion as written: v0.3 passes 15 of 25 region × class cells; failures concentrate in
+  NWT 10–20 m (−2.5 vs −1.6; −1.6 vs −1.4) and NRCAN (one night-time box, North_East_Timber 2023: median v0.3 2.9 m, v7 7.6 m,
+  CHM 14.2 m). v0.2 is slightly better than v0.3 in tall classes here (the plateau top trims ~0.3 m).
+- **By signal (r, v7 → v0.3):** day strong 0.82 → 0.86, day weak 0.53 → 0.47, night strong 0.89 → 0.84, **night weak
+  0.80 → 0.63** (bias −0.91 → −2.56). Against CHM, v0.3 loses accuracy at night and on weak beams, unlike against LVIS.
+- **Coverage:** v0.3 0.52–0.88 vs v7 0.82–1.00.
+
+**Combined reading of the two independent validations (LVIS 2019 + CanElevation):**
+1. **Solved for this stage:** spurious vegetation over short vegetation (47 → 12 % LVIS; 30 → 9 % CHM) and short-vegetation
+   bias (0–1 m: +3.4 → +0.7 m LVIS; +1.7 → +0.6 m CHM), in every region.
+2. **Tall forest:** better than v7 above 15 m against both references; at 10–15 m about equal (LVIS +1.6 vs +0.4; CHM
+   −2.6 vs −2.4).
+3. **New problem to fix next (v0.4): night-time and weak-beam sparse canopy.** Against CHM, v0.3 underestimates at night
+   (strong −1.1, weak −2.6 m) and r drops; likely the column test's minimum of 5 photons and the box filter's minimum of 4
+   neighbours with near-zero background, which reject sparse real canopy photons at night.
+4. **Coverage** (52–88 % vs 82–100 %) is the main cost; segments flagged "not enough signal" need a closer look by region.
+
+## 2026-10-16 · Independent validation 1: LVIS 2019 (notebook 09) · v0.3 holds outside Alaska development sites
+
+40 random ABoVE 2019 LVIS flight segments (8 per region), ICESat-2 June–September 2019; 35,869 segments with LVIS RH98 on
+≥ 6 of 11 centre-line points; **15,837 reported by all four versions** (common segments). None of these regions were used to
+set any v0.1–v0.3 parameter. Reference = mean LVIS RH98 (waveform; bare ground reads ~0.5–1 m).
+
+| Common segments, mean bias (m) | current v7 30 m | check | v0.2 | v0.3 |
+|---|---|---|---|---|
+| all regions · LVIS 0–1 m (3,635) | +3.40 | +5.46 | +0.82 | **+0.67** |
+| all regions · 1–2 m (2,447) | +2.95 | +3.80 | +2.29 | **+1.87** |
+| all regions · 2–5 m (3,639) | +2.59 | +2.86 | +2.24 | **+1.86** |
+| all regions · 5–10 m (3,342) | +1.81 | +1.83 | +2.59 | +2.12 |
+| all regions · 10–15 m (2,021) | +0.38 | +1.12 | +2.15 | +1.64 |
+| all regions · 15–20 m (651) | −1.82 | +0.56 | +1.20 | **+0.72** |
+| all regions · 20+ m (102) | −1.51 | +1.58 | +0.27 | **+0.13** |
+
+- **Spurious vegetation** (LVIS < 1 m, ICESat-2 > 2 m): current v7 46.8 % → v0.3 **12.2 %** (v0.2 13.0 %); per region
+  Alaska Arctic 50 → 9 %, NWT 40 → 7 %, Prairies / Shield 40 → 9 %, Yukon / N BC 23 → 7 %, Alaska boreal 57 → 29 %.
+- **r vs LVIS RH98 (v7 → v0.3):** day strong 0.57 → 0.66, day weak 0.28 → 0.50, night strong 0.38 → 0.64, night weak
+  0.65 → 0.73.
+- **v0.3 vs v0.2:** v0.3 is closer to LVIS than v0.2 in nearly every region × class cell; the plateau top rule (`top_k = 1`,
+  chosen on development data) is supported by independent data, so it stays.
+- **Coverage (share of segments with a height):** v0.3 0.61–0.65 vs current v7 0.82–0.95. The largest remaining cost.
+- **Remaining errors:** mid-height forest (5–15 m) +1.6 to +2.1 m; Alaska boreal (outside the development tiles) short
+  vegetation +2.3 to +4.1 m and spurious 29 %.
+- **Tall-forest acceptance criterion as written** ("no more negative than current v7", classes ≥ 10 m with ≥ 10 segments):
+  v0.3 passes 9 of 13 cells. 3 of the 4 "failures" are cells where current v7 **over**estimates (Alaska boreal 10–15 m
+  +6.3 vs v0.3 +2.6; 15–20 m +10.0 vs −3.5; Yukon 10–15 m +1.75 vs +1.69) and v0.3 is closer to LVIS; the fourth is Alaska
+  boreal 20+ m (n = 14: v7 +4.0, v0.3 −6.4). **Question for Paul:** restate the criterion as "|bias| no larger than the
+  current v7 30 m, and not more negative where v7 underestimates"? Not changed here.
+- Note: against LVIS the current v7 30 m underestimates tall forest much less (−1.5 to −1.8 m) than against G-LiHT CHM RH98
+  (−5 to −9 m); waveform RH98 and discrete-return CHM RH98 are different quantities. Both references are kept.
+
+## 2026-10-15 · v0.3 started: noise-robust canopy top; independent validation (LVIS 2019, CanElevation, NEON)
+
+**Diagnosis: impossible heights.** In the v0.2 production test (tile 3638, July 2024) 1,087 of 53,552 segments had
+h_canopy > 20 m and 407 > 30 m over tundra: many "canopy" photons (median 44), few ground (5), RH50/RH98 ≈ 0.16, 78 %
+daytime, 90 % strong beams, concentrated in a few tracks. Photon profile (track 221_24_10, solar elevation 47°, background
+~2 MHz): the ground surface is right; clumps of "canopy top" photons sit 20–40 m above it where ATL08 has nothing. Two
+causes, both from very high solar background:
+1. **Canopy-top recovery** accepted a photon with ≥ 2 neighbours in a ±15 m × ~4 m window, where ~2.3 noise photons are
+   expected by chance at this background.
+2. **Column test (v0.2):** the canopy top was the height of maximum photon excess over background; above the real canopy
+   the excess is a random walk, so its maximum drifts upward when the background is high (also inflating shrub tops).
+
+**v0.3 changes (instrument-based, no site inputs):** `canopy.toc_k_sigma: 3` (canopy-top neighbours must exceed the expected
+background by 3 σ, Poisson, as in the noise filter); `column.top_rule: plateau`, `top_k` (the top is the lowest height whose
+excess is within top_k background σ of the maximum; the tolerance is 0 when there is no background, so night-time canopy is
+untouched). First version had a +1-photon floor that trimmed real night-time canopy tops; removed.
+
+Tests on development data (photon-level; segment heights vs a photon-based reference proxy; not the footprint validation):
+suspect track > 20 m segments 30 → 13 (k = 1) / 10 (k = 2); Seward bias 1–2 m +0.78 → +0.46 / +0.31 m; Kenai 20+ m
++0.6 → −1.3 / −3.2 m; night-time retention unchanged; `toc_k_sigma` alone has no measurable effect. **`top_k = 1` set as
+default; final value to be chosen on the independent validation, reported per region**, since choosing it here would tune
+to the development sites.
+
+**Independent validation data (accessible, checked 15 Oct):**
+- **LVIS 2019 gridded 30 m** (ABoVE_LVIS_VegetationStructure_1923): local on ADAPT (`userfs02/data/LVIS/2019/output/
+  metrics/30`, 116,271 files; index names `LVISF3_*`, files `LVISF2_*`); 1,740 ABoVE 2019 flight segments (July mostly),
+  1,579 overlap boreal tiles, 66 touch the development tiles (excluded). RH10–RH100 means, ZG, CC, shots per cell (~7);
+  waveform RH reads ~0.5–1 m over bare ground. **Notebook 09** (`09_validation_lvis_independent.ipynb`): 8 random segments
+  in each of 5 regions (Alaska boreal, Alaska Arctic, Yukon / N BC, NWT, Prairies / Shield); ICESat-2 June–Sept 2019;
+  reference = mean LVIS RH98 along each segment; versions current v7, check, v0.2, v0.3 on common segments.
+- **NRCan CanElevation HRDEM lidar** (open STAC, 1 m DSM + DTM COGs, EPSG:3979): 321 projects 2019–2025 in 50–70° N across
+  all provinces / territories (QC 57, SK 54, YT 39, NRCAN 36, BC 34, NWT 27, ON 25, AB 17, NU 15, MB 11, …). Remote
+  windowed reads work (~5 s per 2 km box). **Notebook 10** (`10_validation_canelevation_independent.ipynb`): up to 3 projects
+  per province / territory, 2 random 4 km boxes each; CHM = DSM − DTM; ICESat-2 June–Sept of the lidar year; reference
+  = CHM RH98 in each footprint (as notebook 05); leaf-on subset reported. No public Canadian Forest Service ALS archive found;
+  this is the public federal / provincial collection.
+- **NEON AOP CHM** (DP3.30015.001): BONA, DEJU, HEAL, TOOL, BARR, UNDE, STEI, TREE with flights 2019–2025, but downloads now
+  require a NEON account / API token (NEON policy from 30 June 2026); data API returns 403 without it. Pending a token.
+- Not yet: Fennoscandian national lidar (Finland NLS needs an API key; Sweden Lantmäteriet an account; Norway order-based).
+
+**Runner:** v0.3 runs use a lock file (`runs/v0.3/run_logs/run.lock`) and record the papermill exit code correctly (the
+first 09 attempt was logged rc=0 although it failed: fixed).
+
+## 2026-10-15 · Summary deck version 2 (v0.2 results); canopy cover on hold; v0.3 started
+
+- Deck updated in place (same link): slides 7–10 rebuilt with v0.2 figures and numbers, next steps = v0.3, tracker row v0.2
+  (`docs/slides/outline.md` lists the changes). The canopy-cover slide was replaced by agreement-by-signal and coverage.
+- **Paul Montesano (15 Oct): canopy cover is on hold; v0.3 focuses on fixing and validating the ATL03 → ATL08-style heights,
+  with validation against LVIS and other accessible airborne lidar (NEON, Canadian, other boreal lidar).**
 
 ## 2026-10-15 · v0.2 results (notebooks 00–08 complete) and the v0.3 list
 

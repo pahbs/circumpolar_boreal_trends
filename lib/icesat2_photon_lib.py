@@ -332,6 +332,12 @@ def canopy_column_top(x, relief, background_rate, min_rel, cfg):
         excess = n - mu
         j = int(np.argmax(excess))
         if n[j] >= col["min_photons"] and excess[j] / np.sqrt(mu[j] + 1.0) >= col["k_sigma"]:
+            if col.get("top_rule", "max") == "plateau":
+                # v0.3: above the real canopy the excess only wanders with the background (a random walk), so its
+                # maximum drifts upward when the background is high. Take the lowest height whose excess is within
+                # top_k standard deviations of the background fluctuation between it and the maximum.
+                tol = col.get("top_k", 2.0) * np.sqrt(np.clip(mu[j] - mu[: j + 1], 0, None))   # 0 when no background
+                j = int(np.argmax(excess[: j + 1] >= excess[j] - tol))
             top[inb] = r[j]
     return top
 
@@ -369,7 +375,15 @@ def classify_track(x, h, background_rate, cfg):
                 xc = x[cand]
                 tree = cKDTree(xc[:, None])
                 nn = tree.query_ball_point(xc[:, None], r=cc["toc_window_m"], return_length=True) - 1
-                idx = np.where(cand)[0][nn >= cc["toc_min_neighbours"]]
+                need = np.full(len(xc), float(cc["toc_min_neighbours"]))
+                if "toc_k_sigma" in cc:
+                    # v0.3: neighbours must clearly exceed the background expected in the candidate window
+                    # (+/- toc_window_m along track, toc window height), as in the noise filter. In daytime over
+                    # bright surfaces ~2 noise photons fall in that window by chance, which v0.1/v0.2 accepted.
+                    win_h = cc["toc_max_above_m"] + 1.0
+                    lam = br[cand] * 2.0 * win_h / C_LIGHT * (2 * cc["toc_window_m"] / cfg["icesat2"]["shot_spacing_m"])
+                    need = np.maximum(need, lam + cc["toc_k_sigma"] * np.sqrt(lam))
+                idx = np.where(cand)[0][nn >= need]
                 cls[idx] = 3
     return cls[inv], relief[inv], signal[inv], gsig[inv]
 
@@ -443,7 +457,91 @@ def _shots_in_segment(ph, edge, cfg):
     return int(np.clip(n, 1, full))
 
 
-def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new", scheme="new"):
+def _segments_table(photons, cfg, class_col, relief_col):
+    """Vectorised core of segment_metrics: one row per (track_id, seg) with the same quantities as the per-segment loop."""
+    seg, ic = cfg["segments"], cfg["icesat2"]
+    L = seg["length_m"]
+    gh = cfg["reclass"]["ground"]["halfwidth_m"]
+    keys = ["track_id", "seg"]
+    p = photons[np.isfinite(photons[relief_col])] if relief_col in photons else photons
+    if not len(p):
+        return pd.DataFrame()
+    cols = [c for c in ["track_id", "x_atc", "lon", "lat", "height", "background_rate", "solar_elevation", "rgt", "cycle",
+                        "gt", "spot", "strong", "granule", "year", "doy", "shot", "time_ns",
+                        "segment_snowcover", "segment_landcover", "msw_flag", "atl03_cnf"] if c in p]
+    d = p[cols].copy()
+    d["cls"] = p[class_col].to_numpy()
+    d["rel"] = p[relief_col].to_numpy()
+    d["seg"] = np.floor(d["x_atc"].to_numpy() / L).astype(np.int64)
+    d = d.sort_values(["track_id", "seg", "x_atc"], kind="mergesort")
+    can, gr = d["cls"].isin((2, 3)), d["cls"].eq(1)
+    g = d.groupby(keys, sort=True)
+    out = pd.DataFrame({"n_canopy": can.groupby([d.track_id, d.seg]).sum(), "n_ground": gr.groupby([d.track_id, d.seg]).sum(),
+                        "n_noise": d["cls"].eq(0).groupby([d.track_id, d.seg]).sum()})
+    out.index.names = keys
+    first = g[["rgt", "cycle", "gt", "spot", "strong"] + (["granule"] if "granule" in d else []) + ["year", "doy"]].first()
+    out = out.join(first)
+    out["x_atc"] = g["x_atc"].mean(); out["lon"] = g["lon"].mean(); out["lat"] = g["lat"].mean()
+    out[["lon0", "lat0"]] = g[["lon", "lat"]].first().to_numpy()
+    out[["lon1", "lat1"]] = g[["lon", "lat"]].last().to_numpy()
+    out["solar_elevation"] = g["solar_elevation"].median()
+    out["background_rate"] = g["background_rate"].median()
+    out = out[(out.n_canopy + out.n_ground) >= seg["min_photons"]]
+    # shots per segment
+    full = int(round(L / ic["shot_spacing_m"]))
+    if seg.get("shots_from_length", False):
+        lim = d.groupby("track_id")["seg"].agg(["min", "max"])
+        tr = out.index.get_level_values(0); sg = out.index.get_level_values(1)
+        edge = (sg == lim.loc[tr, "min"].to_numpy()) | (sg == lim.loc[tr, "max"].to_numpy())
+        if "time_ns" in d:
+            t = pd.to_datetime(d["time_ns"]).astype("int64")
+            span = t.groupby([d.track_id, d.seg]).agg(lambda v: v.max() - v.min()).reindex(out.index).to_numpy() * 1e-9
+            n_edge = np.round(span * ic["pulse_rate_hz"]).astype(int) + 1
+        else:
+            span = g["x_atc"].agg(lambda v: v.max() - v.min()).reindex(out.index).to_numpy()
+            n_edge = np.round(span / ic["shot_spacing_m"]).astype(int) + 1
+        out["n_shots"] = np.where(edge, np.clip(n_edge, 1, full), full)
+    else:
+        if "shot" in d:
+            out["n_shots"] = g["shot"].nunique().reindex(out.index)
+        else:
+            out["n_shots"] = np.maximum(1, (g["x_atc"].agg(lambda v: v.max() - v.min()).reindex(out.index) / ic["shot_spacing_m"]).astype(int))
+    # heights
+    dc = d[can]
+    gc = dc.groupby(keys)["rel"]
+    pcts = sorted(set(seg["rh_percentiles"]) | {98, 100})
+    q = gc.quantile([x / 100 for x in pcts]).unstack()
+    q.columns = [f"rh{int(round(c * 100))}" for c in q.columns]
+    out = out.join(q)
+    out["h_canopy"] = out["rh98"]; out["h_max_canopy"] = out["rh100"]
+    out["h_mean_canopy"] = gc.mean().reindex(out.index)
+    out["h_te_median"] = d[gr].groupby(keys)["height"].median().reindex(out.index)
+    sig = pd.concat([d.loc[gr, keys].assign(rel=d.loc[gr, "rel"].clip(lower=0)), dc[keys + ["rel"]]])
+    qg = sig.groupby(keys)["rel"].quantile([x / 100 for x in seg["rh_percentiles"]]).unstack()
+    qg.columns = [f"rh{int(round(c * 100))}_gedi" for c in qg.columns]
+    out = out.join(qg)
+    if 100 not in seg["rh_percentiles"]:
+        out = out.drop(columns=["rh100"])
+    if 98 not in seg["rh_percentiles"]:
+        out = out.drop(columns=["rh98"])
+    # photon rates
+    noise_per_m_shot = out["background_rate"] * 2 / C_LIGHT
+    can_window = (gc.max().reindex(out.index) - gh).fillna(0.0)
+    out["Evr"] = out["n_canopy"] / out["n_shots"]
+    out["Egr"] = out["n_ground"] / out["n_shots"]
+    out["Ev"] = np.maximum(out["Evr"] - noise_per_m_shot * np.maximum(can_window, 0), 0.0)
+    out["Eg"] = np.maximum(out["Egr"] - noise_per_m_shot * 2 * gh, 0.0)
+    for c in ("segment_snowcover", "segment_landcover", "msw_flag", "atl03_cnf"):
+        if c in d:
+            cnt = d.groupby(keys + [c]).size().reset_index(name="k").sort_values(keys + ["k", c], ascending=[True, True, False, True])
+            out[c] = cnt.drop_duplicates(keys).set_index(keys)[c].reindex(out.index)
+    out = out.reset_index()
+    for c in ("n_canopy", "n_ground", "n_noise", "n_shots"):
+        out[c] = out[c].astype(int)
+    return out
+
+
+def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new", scheme="new", fast=None):
     """30 m along-track segments from classified photons (one row per track x segment).
 
     Canopy-only RH (ATL08 style: rh{p} of canopy-photon relief) and GEDI-style RH over ground + canopy
@@ -454,54 +552,61 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
     L = seg["length_m"]
     gh = cfg["reclass"]["ground"]["halfwidth_m"]
     sv = cfg["reclass"]["short_veg"]
-    rows = []
-    canopy_classes = (2, 3)
-    for tid, sub in photons.groupby("track_id"):
-        sub = sub[np.isfinite(sub[relief_col])] if relief_col in sub else sub
-        if not len(sub):
-            continue
-        sid = np.floor(sub["x_atc"].to_numpy() / L).astype(np.int64)
-        s_first, s_last = sid.min(), sid.max()
-        for s, ph in sub.groupby(sid):
-            cls = ph[class_col].to_numpy()
-            rel = ph[relief_col].to_numpy()
-            can = np.isin(cls, canopy_classes)
-            gr = cls == 1
-            if (can.sum() + gr.sum()) < seg["min_photons"]:
+    # vectorised by default (same numbers as the per-segment loop, verified 16 Oct 2026); fast=False for the loop
+    fast = cfg["segments"].get("vectorized", True) if fast is None else fast
+    if fast:
+        out = _segments_table(photons, cfg, class_col, relief_col)
+        if len(out):
+            out.insert(2, "scheme", scheme)
+    else:
+        rows = []
+        canopy_classes = (2, 3)
+        for tid, sub in photons.groupby("track_id"):
+            sub = sub[np.isfinite(sub[relief_col])] if relief_col in sub else sub
+            if not len(sub):
                 continue
-            n_shots = _shots_in_segment(ph, s in (s_first, s_last), cfg)
-            br = float(ph["background_rate"].median())
-            noise_per_m_shot = br * 2 / C_LIGHT
-            can_rel = rel[can]
-            h_can = _pct(can_rel, 98)
-            can_window = (np.nanmax(can_rel) - gh) if can.any() else 0.0
-            r = {"track_id": tid, "seg": int(s), "scheme": scheme,
-                 "rgt": ph["rgt"].iat[0], "cycle": ph["cycle"].iat[0], "gt": ph["gt"].iat[0],
-                 "spot": ph["spot"].iat[0], "strong": bool(ph["strong"].iat[0]),
-                 "granule": ph["granule"].iat[0] if "granule" in ph else None,
-                 "x_atc": float(ph["x_atc"].mean()), "lon": float(ph["lon"].mean()), "lat": float(ph["lat"].mean()),
-                 "lon0": float(ph.loc[ph["x_atc"].idxmin(), "lon"]), "lat0": float(ph.loc[ph["x_atc"].idxmin(), "lat"]),
-                 "lon1": float(ph.loc[ph["x_atc"].idxmax(), "lon"]), "lat1": float(ph.loc[ph["x_atc"].idxmax(), "lat"]),
-                 "year": int(ph["year"].iat[0]), "doy": int(ph["doy"].iat[0]),
-                 "solar_elevation": float(ph["solar_elevation"].median()), "background_rate": br,
-                 "n_shots": n_shots, "n_ground": int(gr.sum()), "n_canopy": int(can.sum()),
-                 "n_noise": int((cls == 0).sum()),
-                 "h_te_median": float(np.median(ph["height"].to_numpy()[gr])) if gr.any() else np.nan,
-                 "h_canopy": h_can, "h_max_canopy": _pct(can_rel, 100), "h_mean_canopy": float(np.mean(can_rel)) if can.any() else np.nan}
-            for p in seg["rh_percentiles"]:
-                r[f"rh{p}"] = _pct(can_rel, p)
-            sig_rel = np.concatenate([np.clip(rel[gr], 0, None), can_rel])
-            for p in seg["rh_percentiles"]:
-                r[f"rh{p}_gedi"] = _pct(sig_rel, p)
-            r["Evr"] = can.sum() / n_shots
-            r["Egr"] = gr.sum() / n_shots
-            r["Ev"] = max(r["Evr"] - noise_per_m_shot * max(can_window, 0), 0.0)
-            r["Eg"] = max(r["Egr"] - noise_per_m_shot * 2 * gh, 0.0)
-            for c in ("segment_snowcover", "segment_landcover", "msw_flag", "atl03_cnf"):
-                if c in ph:
-                    r[c] = ph[c].mode().iat[0]
-            rows.append(r)
-    out = pd.DataFrame(rows)
+            sid = np.floor(sub["x_atc"].to_numpy() / L).astype(np.int64)
+            s_first, s_last = sid.min(), sid.max()
+            for s, ph in sub.groupby(sid):
+                cls = ph[class_col].to_numpy()
+                rel = ph[relief_col].to_numpy()
+                can = np.isin(cls, canopy_classes)
+                gr = cls == 1
+                if (can.sum() + gr.sum()) < seg["min_photons"]:
+                    continue
+                n_shots = _shots_in_segment(ph, s in (s_first, s_last), cfg)
+                br = float(ph["background_rate"].median())
+                noise_per_m_shot = br * 2 / C_LIGHT
+                can_rel = rel[can]
+                h_can = _pct(can_rel, 98)
+                can_window = (np.nanmax(can_rel) - gh) if can.any() else 0.0
+                r = {"track_id": tid, "seg": int(s), "scheme": scheme,
+                     "rgt": ph["rgt"].iat[0], "cycle": ph["cycle"].iat[0], "gt": ph["gt"].iat[0],
+                     "spot": ph["spot"].iat[0], "strong": bool(ph["strong"].iat[0]),
+                     "granule": ph["granule"].iat[0] if "granule" in ph else None,
+                     "x_atc": float(ph["x_atc"].mean()), "lon": float(ph["lon"].mean()), "lat": float(ph["lat"].mean()),
+                     "lon0": float(ph.loc[ph["x_atc"].idxmin(), "lon"]), "lat0": float(ph.loc[ph["x_atc"].idxmin(), "lat"]),
+                     "lon1": float(ph.loc[ph["x_atc"].idxmax(), "lon"]), "lat1": float(ph.loc[ph["x_atc"].idxmax(), "lat"]),
+                     "year": int(ph["year"].iat[0]), "doy": int(ph["doy"].iat[0]),
+                     "solar_elevation": float(ph["solar_elevation"].median()), "background_rate": br,
+                     "n_shots": n_shots, "n_ground": int(gr.sum()), "n_canopy": int(can.sum()),
+                     "n_noise": int((cls == 0).sum()),
+                     "h_te_median": float(np.median(ph["height"].to_numpy()[gr])) if gr.any() else np.nan,
+                     "h_canopy": h_can, "h_max_canopy": _pct(can_rel, 100), "h_mean_canopy": float(np.mean(can_rel)) if can.any() else np.nan}
+                for p in seg["rh_percentiles"]:
+                    r[f"rh{p}"] = _pct(can_rel, p)
+                sig_rel = np.concatenate([np.clip(rel[gr], 0, None), can_rel])
+                for p in seg["rh_percentiles"]:
+                    r[f"rh{p}_gedi"] = _pct(sig_rel, p)
+                r["Evr"] = can.sum() / n_shots
+                r["Egr"] = gr.sum() / n_shots
+                r["Ev"] = max(r["Evr"] - noise_per_m_shot * max(can_window, 0), 0.0)
+                r["Eg"] = max(r["Egr"] - noise_per_m_shot * 2 * gh, 0.0)
+                for c in ("segment_snowcover", "segment_landcover", "msw_flag", "atl03_cnf"):
+                    if c in ph:
+                        r[c] = ph[c].mode().iat[0]
+                rows.append(r)
+        out = pd.DataFrame(rows)
     if not len(out):
         return out
     out["canopy_signal_photons"] = out["Ev"] * out["n_shots"]

@@ -5,7 +5,13 @@ following the details. Update this outline and the deck with every significant c
 Figures: `docs/figures/` (served from GitHub at `https://raw.githubusercontent.com/pahbs/circumpolar_boreal_trends/master/docs/figures/<file>`).
 
 **Deck:** [Google Slides](https://docs.google.com/presentation/d/1L1QN_-S83ehHG6zJWZfWqqmeBviaDbzCudrvp0YADe0/edit)
-**Deck version:** 1 · 15 Oct 2026 · describes config v0.1
+**Deck version:** 2 · 15 Oct 2026 · describes config v0.2
+
+**Version 2 changes (15 Oct 2026):** title → config v0.2; slide 6 canopy-top rule → column test; slides 7–10 rebuilt with
+v0.2 results (7 Seward 44 % → 15 %, `01_segments_vs_uav.png`; 8 photon labels, `03_confusion_by_height.png`; 9 tall forest
+on common segments, `05_version_comparison.png`; 10 agreement by signal and coverage, `05_by_signal.png`, replacing the
+canopy-cover slide, now on hold); slide 11 image `08_production_test.png` (v0.2); slide 13 next = v0.3 list; slide 14
+tracker with the v0.2 row. The slide texts below describe version 1; the LOG has the v0.2 numbers.
 
 ---
 
