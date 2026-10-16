@@ -108,3 +108,34 @@ def plot_scatter(ax, est, ref, title, lim=None, cmap="Greys"):
     ax.set_ylabel("ICESat-2 h_canopy (m)")
     ax.set_title(title, fontsize=10, loc="left")
     return hb
+
+
+def segments_all_versions(ph, cfgs, cfg, phoreal=None):
+    """30 m segments from the same photons for every version: ATL08 v007 classes in our binning (h_canopy_atl08),
+    our reclassifier for each config in `cfgs` ({'v0.2': cfg02, ...} -> h_canopy_v02, low_signal_v02, ...), and
+    optionally the current v7 30 m PhoREAL segments matched to the nearest segment on the same track (h_canopy_phoreal).
+    All versions use the same 30 m along-track grid, so they line up by (track_id, seg)."""
+    import geopandas as gpd
+    import icesat2_photon_lib as ipl
+    keys = ["track_id", "seg"]
+    geo = ["lon", "lat", "lon0", "lat0", "lon1", "lat1", "solar_elevation", "strong", "year", "doy", "geometry"]
+    nat = ipl.segment_metrics(ipl.native_relief(ph, cfg), cfg, "atl08_class", "relief_atl08", "atl08")
+    frames = {"atl08": nat}
+    for v, c in cfgs.items():
+        frames[v.replace(".", "")] = ipl.segment_metrics(ipl.reclassify(ph, c), c, "class_new", "relief_new", "new")
+    if not any(len(f) for f in frames.values()):
+        return gpd.GeoDataFrame()
+    base = pd.concat([f[keys + geo] for f in frames.values() if len(f)], ignore_index=True).drop_duplicates(keys)
+    for t, f in frames.items():
+        if not len(f):
+            continue
+        cols = {"h_canopy": f"h_canopy_{t}"}
+        if t != "atl08":
+            cols.update({"low_signal": f"low_signal_{t}", "short_veg_flag": f"short_veg_{t}",
+                         "n_canopy": f"n_canopy_{t}", "canopy_signal_photons": f"canopy_signal_{t}"})
+        base = base.merge(f[keys + list(cols)].rename(columns=cols), on=keys, how="left")
+    base = gpd.GeoDataFrame(base, geometry="geometry", crs=4326)
+    if phoreal is not None and len(phoreal):
+        base = ipl.match_segments(base, phoreal.to_crs(4326)[["track_id", "geometry", "h_canopy"]], ["h_canopy"],
+                                  suffix="_phoreal")
+    return base

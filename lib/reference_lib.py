@@ -25,7 +25,7 @@ import requests
 from rasterio.mask import mask as rio_mask
 from rasterio.warp import Resampling
 from scipy import ndimage
-from shapely.geometry import LineString, Polygon, box
+from shapely.geometry import LineString, Polygon, box, shape
 
 CMR = "https://cmr.earthdata.nasa.gov/search/granules.json"
 
@@ -449,3 +449,103 @@ def hansen_lossyear(lon, lat, version="GFC-2024-v1.12"):
         except Exception as err:
             print(f"Hansen tile {key}: {err}")
     return out
+
+
+# ============================================================ LVIS (ABoVE_LVIS_VegetationStructure_1923, 30 m gridded)
+
+LVIS_DIRS = {2017: '/explore/nobackup/people/pmontesa/userfs02/data/LVIS/2017/output/metrics/30',
+             2019: '/explore/nobackup/people/pmontesa/userfs02/data/LVIS/2019/output/metrics/30'}
+
+
+def lvis_paths(stem, year, metrics=("RH095_mean", "RH098_mean", "RH100_mean", "lvis_pt_cnt")):
+    """Local 30 m rasters of one LVIS flight segment. `stem` as in the ORNL footprint index (LVISF3_...); the local
+    files of the same product are named LVISF2_... ."""
+    s = stem.replace("LVISF3_", "LVISF2_")
+    return {m: f"{LVIS_DIRS[year]}/{s}_{m}_30m.tif" for m in metrics}
+
+
+def lvis_segment_metrics(segs, stem, year, metrics=("RH095_mean", "RH098_mean", "RH100_mean", "lvis_pt_cnt"),
+                         step_m=3.0):
+    """LVIS 30 m cell values along each 30 m segment: the mean over points every step_m along the segment centre line
+    (first to last photon), i.e. a length-weighted mean of the cells the footprint crosses. Adds lvis_<metric> columns
+    and lvis_n (points with a valid RH098). LVIS RH is from the return waveform: bare ground reads ~0.5-1 m, not 0."""
+    paths = lvis_paths(stem, year, metrics)
+    utm = gpd.GeoSeries(gpd.points_from_xy(segs["lon"], segs["lat"]), crs="EPSG:4326").estimate_utm_crs()
+    p0 = gpd.GeoSeries(gpd.points_from_xy(segs["lon0"], segs["lat0"]), crs=4326).to_crs(utm)
+    p1 = gpd.GeoSeries(gpd.points_from_xy(segs["lon1"], segs["lat1"]), crs=4326).to_crs(utm)
+    n_pts = 11
+    f = np.linspace(0, 1, n_pts)
+    xs = (p0.x.to_numpy()[:, None] + (p1.x - p0.x).to_numpy()[:, None] * f).ravel()
+    ys = (p0.y.to_numpy()[:, None] + (p1.y - p0.y).to_numpy()[:, None] * f).ravel()
+    ll = gpd.GeoSeries(gpd.points_from_xy(xs, ys), crs=utm).to_crs(4326)
+    out = segs.copy()
+    for m, path in paths.items():
+        if not os.path.exists(path):
+            out[f"lvis_{m}"] = np.nan
+            continue
+        with rasterio.open(path) as src:
+            q = ll.to_crs(src.crs)
+            v = _sample_open(src, q.x.to_numpy(), q.y.to_numpy()).reshape(len(segs), n_pts)
+        if m.startswith("RH"):
+            v[v >= 250] = np.nan                 # 255 = nodata in these byte rasters is masked by _sample_open; guard
+            out[f"lvis_{m}"] = np.nanmean(v, axis=1)
+            if m == "RH098_mean":
+                out["lvis_n"] = np.isfinite(v).sum(axis=1)
+        else:
+            out[f"lvis_{m}"] = np.nanmean(v, axis=1)
+    out["lvis_stem"] = stem
+    return out
+
+
+# ============================================================ NRCan CanElevation HRDEM lidar (open; DSM + DTM, 1 m COGs)
+
+CANELEV_STAC = "https://datacube.services.geo.ca/stac/api"
+
+
+def canelevation_items(bbox, collection="hrdem-lidar", min_year=None):
+    """All CanElevation lidar project items intersecting bbox (lon/lat). One item = one acquisition project, with
+    1 m 'dsm' and 'dtm' COG assets (EPSG:3979). Returns a GeoDataFrame with id, year, province prefix and asset URLs."""
+    import requests
+    body, url, feats = {"collections": [collection], "bbox": list(bbox), "limit": 500}, CANELEV_STAC + "/search", []
+    while True:
+        j = requests.post(url, json=body, timeout=120).json()
+        feats += j.get("features", [])
+        nxt = [l for l in j.get("links", []) if l.get("rel") == "next"]
+        if not nxt:
+            break
+        body, url = nxt[0].get("body", body), nxt[0]["href"]
+    rows = []
+    for f in feats:
+        p = f["properties"]
+        dt = p.get("datetime") or p.get("start_datetime") or ""
+        rows.append({"id": f["id"], "year": int(dt[:4]) if dt else None, "month": int(dt[5:7]) if dt else None,
+                     "prefix": f["id"].split("-")[0], "dsm": f["assets"]["dsm"]["href"], "dtm": f["assets"]["dtm"]["href"],
+                     "geometry": shape(f["geometry"])})
+    g = gpd.GeoDataFrame(rows, crs=4326)
+    return g[g.year >= min_year] if min_year else g
+
+
+def canelevation_chm(dsm_url, dtm_url, box_4326, out_path, max_height=60.0):
+    """1 m canopy height model (DSM - DTM, clipped to 0..max_height; NaN where either is nodata) for a box, read as one
+    window from the remote COGs and written as a local GeoTIFF. Returns the path, or None if the box has no data."""
+    from rasterio.windows import from_bounds
+    out_path = Path(out_path)
+    if out_path.exists():
+        return str(out_path)
+    with rasterio.open(dsm_url) as s, rasterio.open(dtm_url) as t:
+        b = gpd.GeoSeries([box_4326], crs=4326).to_crs(s.crs).total_bounds
+        win = from_bounds(*b, transform=s.transform).round_offsets().round_lengths()
+        win = win.intersection(Window(0, 0, s.width, s.height))
+        a = s.read(1, window=win).astype("float32")
+        g = t.read(1, window=win).astype("float32")
+        bad = (a == s.nodata) | (g == t.nodata) | ~np.isfinite(a) | ~np.isfinite(g)
+        chm = np.clip(a - g, 0, max_height)
+        chm[bad] = np.nan
+        if np.isfinite(chm).mean() < 0.2:
+            return None
+        prof = {"driver": "GTiff", "height": chm.shape[0], "width": chm.shape[1], "count": 1, "dtype": "float32",
+                "crs": s.crs, "transform": s.window_transform(win), "nodata": np.nan, "compress": "deflate", "tiled": True}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(out_path, "w", **prof) as dst:
+        dst.write(chm, 1)
+    return str(out_path)
