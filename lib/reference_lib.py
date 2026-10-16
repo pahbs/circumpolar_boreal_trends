@@ -19,6 +19,8 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
+from rasterio.transform import rowcol
+from rasterio.windows import Window
 import requests
 from rasterio.mask import mask as rio_mask
 from rasterio.warp import Resampling
@@ -161,19 +163,79 @@ def footprint_surfaces(chm_path, dtm_path, out_dir, footprint_m=11.0):
 
 def sample_raster(path, lon, lat, dx=0.0, dy=0.0):
     """Sample a single-band raster at lon/lat points (EPSG:4326), optionally shifted by dx, dy metres in
-    the raster's projected CRS. NaN outside the raster or at nodata."""
+    the raster's projected CRS. NaN outside the raster or at nodata. Value of the pixel containing each point
+    (as rasterio's sample()), read as one window covering the points instead of point by point."""
     lon, lat = np.asarray(lon), np.asarray(lat)
     with rasterio.open(path) as src:
         pts = gpd.GeoSeries(gpd.points_from_xy(lon, lat), crs="EPSG:4326").to_crs(src.crs)
         xs, ys = pts.x.to_numpy() + dx, pts.y.to_numpy() + dy
-        inb = (xs >= src.bounds.left) & (xs <= src.bounds.right) & (ys >= src.bounds.bottom) & (ys <= src.bounds.top)
-        out = np.full(len(xs), np.nan, dtype="float64")
-        if inb.any():
-            vals = np.array([v[0] for v in src.sample(zip(xs[inb], ys[inb]))], dtype="float64")
+        return _sample_open(src, xs, ys)
+
+
+def _sample_open(src, xs, ys, cache=None, block=1024):
+    """Pixel values at projected points xs, ys (src CRS) from an open dataset; NaN outside or at nodata.
+    Points are grouped into block x block pixel cells and each cell is read once as a small window, so a sparse track
+    across a large mosaic does not read the whole raster. `cache` (dict) keeps the cells between calls (shift search)."""
+    out = np.full(len(xs), np.nan, dtype="float64")
+    inb = (xs >= src.bounds.left) & (xs < src.bounds.right) & (ys > src.bounds.bottom) & (ys <= src.bounds.top)
+    if not inb.any():
+        return out
+    rows, cols = rowcol(src.transform, xs[inb], ys[inb], op=np.floor)
+    rows, cols = np.asarray(rows, dtype=np.int64), np.asarray(cols, dtype=np.int64)
+    vals = np.full(len(rows), np.nan)
+    br, bc = rows // block, cols // block
+    key = br * (src.width // block + 2) + bc
+    for k in np.unique(key):
+        m = key == k
+        r0, c0 = int(br[m][0]) * block, int(bc[m][0]) * block
+        ck = (src.name, r0, c0)
+        arr = cache.get(ck) if cache is not None else None
+        if arr is None:
+            h, w = min(block, src.height - r0), min(block, src.width - c0)
+            arr = src.read(1, window=Window(c0, r0, w, h)).astype("float32")
             if src.nodata is not None and np.isfinite(src.nodata):
-                vals[vals == src.nodata] = np.nan
-            out[inb] = vals
+                arr[arr == src.nodata] = np.nan
+            if cache is not None:
+                cache[ck] = arr
+        vals[m] = arr[rows[m] - r0, cols[m] - c0]
+    out[inb] = vals
     return out
+
+
+class MosaicSampler:
+    """sample_mosaic for many calls on the same points (e.g. a shift search): rasters opened once, points reprojected
+    once per CRS, rasters that cannot reach the points (bounds + pad) skipped. Same values as sample_mosaic."""
+
+    def __init__(self, paths, lon, lat, pad=0.0):
+        self.srcs = [rasterio.open(p) for p in paths]
+        pts = gpd.GeoSeries(gpd.points_from_xy(np.asarray(lon), np.asarray(lat)), crs="EPSG:4326")
+        self.xy, keep = {}, []
+        for src in self.srcs:
+            k = src.crs.to_string()
+            if k not in self.xy:
+                q = pts.to_crs(src.crs)
+                self.xy[k] = (q.x.to_numpy(), q.y.to_numpy())
+            xs, ys = self.xy[k]
+            b = src.bounds
+            if (xs.max() + pad >= b.left) and (xs.min() - pad <= b.right) and (ys.max() + pad >= b.bottom) and (ys.min() - pad <= b.top):
+                keep.append(src)
+        self.use = keep
+        self.n = len(pts)
+        self.cache = {}                     # raster cells read so far (reused across shifts)
+
+    def __call__(self, dx=0.0, dy=0.0):
+        out = np.full(self.n, np.nan)
+        for src in self.use:
+            need = ~np.isfinite(out)
+            if not need.any():
+                break
+            xs, ys = self.xy[src.crs.to_string()]
+            out[need] = _sample_open(src, xs[need] + dx, ys[need] + dy, self.cache)
+        return out
+
+    def close(self):
+        for s in self.srcs:
+            s.close()
 
 
 def sample_mosaic(paths, lon, lat, dx=0.0, dy=0.0):
@@ -201,10 +263,11 @@ def track_offsets(photons, dtm_paths, cfg, ground_mask=None):
         if len(g) < 20:
             continue
         g = g.sample(min(len(g), 3000), random_state=0)
+        sampler = MosaicSampler(dtm_paths, g["lon"], g["lat"], pad=rl["offset_search_m"] + 1)
         best = None
         for dx in shifts:
             for dy in shifts:
-                ref = sample_mosaic(dtm_paths, g["lon"], g["lat"], dx, dy)
+                ref = sampler(dx, dy)
                 res = g["height"].to_numpy() - ref
                 res = res[np.isfinite(res)]
                 if len(res) < 20:
@@ -214,7 +277,20 @@ def track_offsets(photons, dtm_paths, cfg, ground_mask=None):
                 if best is None or score < best["mad"]:
                     best = {"track_id": tid, "dx": dx, "dy": dy, "dz": med, "mad": score, "n": len(res)}
         if best:
+            gain = rl.get("offset_min_gain")
+            if gain is not None and (best["dx"], best["dy"]) != (0.0, 0.0):
+                # v0.2: keep a horizontal shift only if it clearly improves the ground fit over no shift
+                ref0 = sampler(0.0, 0.0)
+                res0 = g["height"].to_numpy() - ref0
+                res0 = res0[np.isfinite(res0)]
+                if len(res0) >= 20:
+                    med0 = np.median(res0)
+                    mad0 = np.median(np.abs(res0 - med0))
+                    best["mad_noshift"] = mad0
+                    if best["mad"] > (1 - gain) * mad0:
+                        best.update({"dx": 0.0, "dy": 0.0, "dz": med0, "mad": mad0, "n": len(res0), "shift_rejected": True})
             rows.append(best)
+        sampler.close()
     return pd.DataFrame(rows)
 
 

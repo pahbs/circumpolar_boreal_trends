@@ -1,6 +1,6 @@
 # ATL03 v007 reclassification: decisions and results log
 
-**Summary slides for collaborators:** _Google Slides deck pending (needs the Google Slides connector); outline and figures in `docs/slides/outline.md`, `docs/figures/`._
+**Summary slides for collaborators:** [Google Slides deck](https://docs.google.com/presentation/d/1L1QN_-S83ehHG6zJWZfWqqmeBviaDbzCudrvp0YADe0/edit) (deck version 1, 15 Oct 2026, config v0.1). Source outline `docs/slides/outline.md`; figures `docs/figures/`. Update the deck with every significant change to methods or results.
 
 **Newest entries at the top.** Each entry: what was decided or found, why, and what it changes. Methods as implemented:
 `atl03_reclassification_methods.md`; plan: `atl03_reclassification_plan.md`. Terms as defined in both.
@@ -13,20 +13,161 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (15 Oct 2026):** config v0.1 implemented; notebooks 00–08 run on ADAPT; committed and pushed (`52d07e9`).
-v0.1 reduces spurious short-vegetation heights but **underestimates tall forest more than the current v7 30 m**; not usable yet.
+**Status (15 Oct 2026, evening):** v0.2 run complete (notebooks 00–08, `runs/v0.2/`). Tall forest now **less**
+underestimated than the current v7 30 m in 5 of 6 region × class cells ≥ 10 m (fails Kenai 10–15 m by 0.12 m); short
+vegetation still overestimated where heights are reported; canopy cover still not usable. Not adopted yet. v0.3 list below.
+
+**v0.3 (proposed, in order):**
+1. Short-vegetation overestimate (G-LiHT 0–1 m: +3.0 m; Seward 1–2 m: +2.3 m where reported): find which photons set RH98.
+2. Coverage: 30 % of segments "not enough signal", most in day · weak beams (339 of 783 reported): check the 15-photon
+   threshold against the ATL08 ATBD and against bias by signal.
+3. Tall forest: close the remaining −2.4 to −4.1 m; check the Kenai 10–15 m failure and which reference percentile fits.
+4. Overfitting check on the column-test settings (leave-one-region-out), then items 5–6 of v0.2 (slope × forest strata,
+   LVIS) to widen validation.
+5. Canopy cover: the method itself (ratios implausible even with reference photon labels).
+6. Runner: one-run lock file (two runners overlapped on 15 Oct).
 
 **v0.2 (in order):**
-1. Check and fix the notebook 05 footprint matching / alignment (r = 0.43 for current v7 30 m vs G-LiHT is not credible).
-2. Shots per segment from segment length (fixes `Ev`, `Eg`, cover, guard).
-3. `low_signal` flag with `h_canopy` = NaN; 0 m only with enough signal and canopy RH98 < 0.6 m.
-4. **Tall-forest canopy retention** (acceptance criterion below): canopy- and beam-aware noise filter, stronger canopy-top recovery.
+1. **Done (diagnosed).** Footprint matching is not the cause of r = 0.43 (shift scan, entry below); low r is daytime / weak-beam
+   noise. 02: keep horizontal shifts only when they clearly help; 05: report by day/night × beam.
+2. **Done (sample-tested).** Shots per segment from segment length (fixes `Ev`, `Eg`, cover, guard).
+3. **Done (sample-tested).** `low_signal` flag with `h_canopy` = NaN; 0 m only with enough signal and canopy RH98 < 0.6 m.
+4. **Done (sample-tested; per-region check pending).** Tall-forest canopy retention: canopy column test.
 5. Validation strata: slope class × forest / non-forest (circumpolar layers), reported for every version.
 6. Add gridded LVIS 2017/2019 (ABoVE_LVIS_VegetationStructure_1923) as a second airborne reference.
-7. Rerun 01–07; compare v0.1 vs v0.2 per region, per height class, per slope × forest stratum.
+7. Rerun 01–08; compare v0.1 vs v0.2 per region, per height class, per slope × forest stratum. Expected ~4–5 h as before
+   (notebook 02 ~3 h dominates); ~2–2.5 h if the Hansen lookup is cached and offsets run per tile in parallel.
+8. **Done.** Figures: shared style (`lib/plot_style.py`), vegetation-height colormap, ESRI Light Gray basemap on maps.
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-15 · v0.2 results (notebooks 00–08 complete) and the v0.3 list
+
+**Run:** finished 15:14. From 14:08 two runners overlapped (the first was not killed when the Claude Code session ended,
+contrary to what was logged), running 05–08 and 00 twice with the same code and config. All 32 v0.2 Parquet outputs read
+cleanly; the validation CSVs are from the later runner. Next time: a lock file so a second runner refuses to start.
+
+**Heights vs G-LiHT on common segments** (segments all three versions report; mean bias, m; n in brackets):
+
+| Region · reference height | current v7 30 m | v0.1 | v0.2 |
+|---|---|---|---|
+| Interior · 10–15 m (55) | −5.10 | −6.55 | **−2.76** |
+| Interior · 15–20 m (15) | −9.02 | −12.63 | **−7.93** |
+| Interior · 20+ m (6) | −10.62 | −14.51 | **−8.06** |
+| Kenai · 10–15 m (126) | −2.14 | −6.07 | −2.26 |
+| Kenai · 15–20 m (173) | −3.87 | −6.81 | **−2.48** |
+| Kenai · 20+ m (68) | −6.01 | −8.50 | **−3.72** |
+| all · 0–1 m (679) | +2.98 | +2.11 | +3.00 |
+| all · 1–2 m (173) | +1.62 | +0.89 | +1.53 |
+
+- **Tall-forest acceptance criterion:** met in 5 of 6 cells; **fails Kenai 10–15 m by 0.12 m** (−2.26 vs −2.14). Interior
+  15–20 and 20+ m have only 15 and 6 segments. v0.2 therefore is not adopted, but the column test reverses v0.1's tall-forest
+  loss: v0.2 is closer to the reference than the current v7 30 m in the tall classes.
+- **Short vegetation:** no better than the current v7 30 m on G-LiHT (0–1 m: +3.0 m both). Spurious vegetation (ref < 1 m,
+  ICESat-2 > 2 m, all segments each version reports): current v7 38 %, v0.2 28 %; Seward 44 % → 15 % (v0.1: 12.5 %).
+  Seward bias where reported: 0–1 m +1.0 m (v7 +2.8), 1–2 m +2.3 m (v7 +1.7), 2–5 m +1.0 m (v7 +1.1).
+- **Coverage:** v0.2 reports a height for ~70 % of segments (rest "not enough signal"); losses concentrate in day · weak
+  beams (339 reported vs 783 for v7). 94–99 % of the G-LiHT photons are daytime.
+- **By signal (r vs G-LiHT RH98, v7 → v0.2):** night strong 0.48 → 0.70, night weak 0.25 → 0.53, day strong 0.63 → 0.57,
+  day weak 0.24 → 0.29. RMSE drops in every stratum except day strong (5.2 → 6.6 m).
+- **Canopy cover:** still not usable. Fitted ρv/ρg 0.13 (Interior), 0.40 (Kenai), 0.52 (Seward), cover bias +20 to +47
+  points, r ≤ 0.40. **Fitting with reference photon labels gives the same implausible ratios (0.11, 0.32, 0.46)**, so the
+  problem is in the rate / fit method, not in our photon classification. The shot-count fix did not resolve it.
+
+**v0.3 list (why each):**
+1. **Short-vegetation overestimate** is now the largest error and is not fixed by v0.1 or v0.2. Next: per-segment
+   diagnosis of which photons set RH98 over short vegetation (daytime noise just above the canopy window, ground surface
+   placed too low, or the 0.6 m resolvable height), by day / night.
+2. **Coverage:** check the low-signal threshold (15 background-corrected photons per 30 m) against the ATL08 ATBD, and
+   look at bias as a function of signal to set it from data in every region.
+3. **Tall forest:** remaining −2.4 to −4.1 m in classes ≥ 10 m; check the Kenai 10–15 m cell, and which reference
+   percentile (RH95 / RH98 / RH100) matches best per height class.
+4. **Overfitting:** leave-one-region-out for the column-test settings; slope × forest strata and LVIS 2017/2019 (v0.2
+   items 5–6, not done) to widen validation beyond the two G-LiHT regions.
+5. **Canopy cover:** revisit the Purslow et al. (2023) rate formulation (background correction, segment length, per-track
+   fit) since even reference labels fail.
+6. **Runner:** a lock file per run directory.
+
+## 2026-10-15 · v0.2 work: validation-matching diagnosis, shot count, low-signal flag, canopy column test, figure style
+
+**1 · Why the current v7 30 m agrees so poorly with G-LiHT (r = 0.43): diagnosis.** If segment footprints are placed in the wrong
+spot on the G-LiHT canopy height model, every segment is compared with the wrong trees and the correlation drops even if the
+heights are fine. Checks on the v0.1 validation table (25,348 G-LiHT segments; only 1,788 have an ATL08-classes height in our
+binning, 2,323 a PhoREAL height):
+- **Footprints are the right size:** median 29 m long (first to last photon), median 321 CHM pixels each (1 m), as designed.
+- **Track shifts look unreliable:** of 185 per-track horizontal shifts from notebook 02, **46 % sit at the edge of the ±6 m search
+  window**, which suggests the true shift is larger or the alignment score (median absolute deviation of ground photons vs the
+  DTM) does not find it. Vertical offsets `dz` range −3 to +22 m; a geoid offset should be nearly constant within a region.
+- **Agreement depends strongly on signal**, for the check version (ATL08 classes → our 30 m) vs G-LiHT RH98: r = 0.60 at night vs
+  0.36 by day; 0.52 strong vs 0.24 weak beams; 0.17 Interior vs 0.41 Kenai; r rises from 0.43 to 0.53 with ≥ 20 canopy photons.
+  Part of the low r is therefore real (daytime and weak-beam noise, and the narrow height range in the interior), not matching.
+- **Shift scan (result):** for 2,302 validation segments with an ATL08-classes height (54 tracks with ≥ 15 such segments), the
+  footprint was moved over the 1 m CHM in 2 m steps up to ±20 m each way (441 positions) and RH98 recomputed at each.
+  - Pooled r vs shift distance: 0.44 at 0 m, 0.43 at 4–8 m, 0.41 at 16 m, 0.39 at 28 m. Best single shift (−2, +2 m): r = 0.45.
+  - Per-track best shifts are scattered (median 9 m, SD ~10 m, random directions); even with each track's own best shift
+    (optimistic, overfits) pooled r is only 0.55.
+  - **Conclusion: footprint placement is not the cause of the low r.** At 30 m scale a few metres of misplacement barely
+    matters. The low pooled r comes from ICESat-2 signal: night r = 0.60 and strong-beam r = 0.52 are close to published
+    ATL08 vs ALS agreement; daytime and weak-beam segments with few canopy photons pull the pooled value down. Segment-level
+    v0.1 numbers stand, but must be reported by day/night × beam.
+  - **Changes from this:** (a) notebook 02 keeps a track's horizontal shift only if it clearly improves the ground fit over no
+    shift (`reference_labels.offset_min_gain`), since the ±6 m grid often picks noise (46 % at the edge); (b) notebook 05
+    reports every result by day/night × beam strength as well as pooled. The ±6 m search is not widened (no evidence for
+    larger shifts), so notebook 02 does not get slower.
+
+**2 · Shot count (fixed).** v0.1 counted distinct shot ids among a segment's photons, missing shots with no return (median 34
+counted vs 43 actual), which inflated per-shot rates (`Ev`, `Eg`), cover and the guard. v0.2: shots = segment length / 0.7 m;
+partial first/last segments of a track from the photon time span at 10 kHz (`segments.shots_from_length`).
+
+**3 · Low-signal flag (added).** v0.2 reports `h_canopy` = NaN with `low_signal` = True where background-corrected ground +
+canopy photons < 15 per segment (scaled from ATL08's ~50 per 100 m; to verify against the ATBD); 0 m only where signal is
+sufficient and canopy evidence is weak or RH98 < 0.6 m. On 6 sample tracks: 0 m share 91 % → 52 %, 41 % flagged low-signal.
+
+**4 · Canopy column test (added).** Tall, open canopy spreads few photons over tens of metres, so the box noise filter dropped
+real canopy photons. New step: per 20 m along-track column, photons above the ground are sorted by height; the canopy top is
+where the photon excess over the background expected in that height range (from the ATL03 background rate, Poisson) is
+largest and significant. Only instrument quantities and a significance level; no site inputs. Settings chosen from a grid on
+50 sampled tracks (25 Interior, 25 Kenai; `runs/v0.2/col_grid.csv`): k_sigma 5, min 5 photons, max vertical gap 5 m.
+
+| Reference canopy photons kept as canopy | v0.1 | v0.2 |
+|---|---|---|
+| canopy ≥ 10 m, day | 0.48 | 0.65 |
+| canopy ≥ 10 m, night | 0.25 | 0.60 |
+| ground labelled canopy, canopy ≥ 10 m, night | 0.13 | 0.18 |
+| noise labelled canopy, canopy < 5 m, night | 0.010 | 0.029 |
+
+Cost: more night-time ground and noise photons labelled canopy; the effect on spurious tundra heights must be checked at segment
+level (Seward). **Overfitting check pending:** settings were picked on pooled Alaska tracks; per-region results and
+leave-one-region-out are required before adopting.
+
+**Seward after notebook 01 (v0.2) · read version comparisons on common segments.** Spurious tundra heights 12.5 % → 14.6 %
+(current v7 30 m: 43 %); mean bias vs drone height rose (0–1 m: +0.4 → +1.0 m; 1–2 m: +0.4 → +1.5 to +2.3 m). Cause checked:
+raw canopy RH98 per segment barely changed (mean |Δ| 0.15–0.5 m) and photon labels on Seward are almost identical to v0.1. The
+change is which segments get a height: v0.1 set 67 % of drone < 1 m segments to 0 m, mostly for low signal, which pulled the
+mean bias down; v0.2 reports half of those as NaN (low signal). The segments that do get a height were already ~+1.9 m too
+high in v0.1. **So shrub heights are overestimated by ~2 m where reported, in v0.1 and v0.2 alike** (to address next). A
+"minimum column top 3 m" rule was tested and dropped (no effect on Seward photons; −0.01 tall-forest retention at night).
+**From now on every version comparison reports (a) metrics on the segments both versions report and (b) coverage (share
+of segments with a height),** since a shrinking set of reported segments moves mean bias without any real change.
+
+**Speed (notebook 02).** The track-offset search reopened every G-LiHT strip (up to 60) and sampled point by point for each of
+49 shifts per track: ~65 min for the smallest tile, ~8 h projected for four tiles. `reference_lib.MosaicSampler` opens the
+strips once per track, reprojects once, skips strips out of reach and reads one window per strip; `sample_raster` reads a
+window instead of point-by-point sampling. Results verified identical to the old code (values and offsets); 32 s → < 1 s for
+four tracks. Run restarted from 02 at 11:29 (00 and 01 kept; 00 re-executed at the end for the map fix). That restart was
+still slow: a sparse track across a whole-flight G-LiHT **mosaic** DTM made the window span the mosaic (~10 GB, re-read per
+shift). Fixed by reading 1024 × 1024 px cells around the points, cached across shifts; verified identical (tile 3457: 3
+tracks 265 s → 22 s; full tile, 51 tracks, 92 s; 22 of 51 keep a horizontal shift). Restarted from 02 at 12:08.
+
+**8 · Figures.** `lib/plot_style.py`: shared style for all notebooks; vegetation-height colormap from the VHR/ICESat-2 height
+review map (https://pahbs.github.io/maap_tools/maps/Review_maps_v3.1_height_VHR.html; 0–10 m, gray → browns → yellows →
+dark green, reproduced from its 500 colour samples) for any canopy-height display; ESRI World Light Gray Canvas basemap
+(contextily, added to the `atl03reclass` env) on every map. Maps in notebooks 00 and 08 updated; scatter panels square with r.
+
+**Outputs by version.** Notebooks now use config v0.2 and write config-dependent outputs to `runs/v<version>/` (reclass,
+segments, validation, cover, production, figures, labelled photons, offsets); downloads, fetched photons, PhoREAL and
+inventories stay shared in the work directory.
 
 ## 2026-10-15 · Tall forest is a hard requirement; validation widened (LVIS, slope × forest, public ALS)
 

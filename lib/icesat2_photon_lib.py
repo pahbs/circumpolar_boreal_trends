@@ -298,6 +298,44 @@ def ground_surface(x, h, signal, cfg):
     return np.interp(x, centers, filled), np.interp(x, centers, sig)
 
 
+def canopy_column_top(x, relief, background_rate, min_rel, cfg):
+    """v0.2 canopy test for sparse canopy photons: per along-track column, the height up to which photons above the
+    ground clearly outnumber the solar background expected in that height range.
+
+    Tall, open canopy spreads few photons over tens of metres, so a small box around each photon (step 1) often holds
+    fewer neighbours than its threshold and real canopy photons are dropped. Here the photons above the ground in a
+    column (window_along_m long) are sorted by relief; for each candidate top z the excess is N(z) - mu(z), where
+    mu(z) = background rate x 2/c x shots x (z - min_rel) is the expected background count between min_rel and z.
+    The top is the z with the largest excess, accepted if (N - mu) / sqrt(mu + 1) >= k_sigma and N >= min_photons.
+    Photons are not counted across a vertical gap larger than max_gap_m (stray photons high above the canopy).
+    Only instrument quantities (background rate, shot spacing) and the Poisson test are used, so it adapts to
+    day/night and beam strength. Returns the column top (relief, m) at every photon; NaN where no canopy is found."""
+    col = cfg["reclass"]["canopy"]["column"]
+    L = col["window_along_m"]
+    per_m_shot = np.asarray(background_rate, float) * 2.0 / C_LIGHT        # background photons per m height per shot
+    shots = L / cfg["icesat2"]["shot_spacing_m"]
+    top = np.full(len(x), np.nan)
+    b = np.floor((x - x.min()) / L).astype(np.int64)
+    above = np.isfinite(relief) & (relief > min_rel) & (relief <= cfg["reclass"]["canopy"]["max_relief_m"])
+    for k in np.unique(b):
+        inb = b == k
+        r = np.sort(relief[inb & above])
+        if len(r) < col["min_photons"]:
+            continue
+        lo = float(np.median(np.atleast_1d(min_rel)[inb])) if np.ndim(min_rel) else float(min_rel)
+        gaps = np.diff(r)
+        cut = np.where(gaps > col["max_gap_m"])[0]
+        if len(cut):
+            r = r[:cut[0] + 1]
+        n = np.arange(1, len(r) + 1)
+        mu = float(np.median(per_m_shot[inb])) * shots * np.clip(r - lo, 0, None)
+        excess = n - mu
+        j = int(np.argmax(excess))
+        if n[j] >= col["min_photons"] and excess[j] / np.sqrt(mu[j] + 1.0) >= col["k_sigma"]:
+            top[inb] = r[j]
+    return top
+
+
 def classify_track(x, h, background_rate, cfg):
     """Steps 1-3 for one granule x beam track. Returns (class, relief, signal, ground_sigma)."""
     cc = cfg["reclass"]["canopy"]
@@ -314,6 +352,10 @@ def classify_track(x, h, background_rate, cfg):
     cls[signal & (np.abs(relief) <= gc["halfwidth_m"])] = 1
     min_rel = np.maximum(cc["min_relief_m"], cc["ground_sigma_k"] * np.nan_to_num(gsig, nan=0.0))
     cls[signal & (relief > min_rel) & (relief <= cc["max_relief_m"])] = 2
+    if cc.get("column", {}).get("enabled", False):
+        # v0.2: photons above the ground and below the column canopy top are canopy even if the box filter missed them
+        ctop = canopy_column_top(x, relief, br, min_rel, cfg)
+        cls[(cls == 0) & (relief > min_rel) & (relief <= ctop)] = 2
 
     if cc["toc_recovery"]:
         # canopy envelope: rolling max of canopy relief along track
@@ -380,6 +422,27 @@ def _pct(v, q):
     return np.percentile(v, q) if len(v) else np.nan
 
 
+def _shots_in_segment(ph, edge, cfg):
+    """Laser shots in a 30 m segment, including shots that returned no photon.
+
+    v0.1 counted distinct shot ids among the photons, which misses empty shots and inflates per-shot rates where
+    returns are sparse (weak beams, dense canopy, night). With `segments.shots_from_length` (v0.2): a full segment
+    has length / shot_spacing shots; the first and last segment of a track can be partial, so there the count comes
+    from the photon time span at the pulse rate (capped at the full-segment count)."""
+    ic, seg = cfg["icesat2"], cfg["segments"]
+    if not seg.get("shots_from_length", False):
+        return ph["shot"].nunique() if "shot" in ph else max(1, int(np.ptp(ph["x_atc"]) / ic["shot_spacing_m"]))
+    full = int(round(seg["length_m"] / ic["shot_spacing_m"]))
+    if not edge:
+        return full
+    if "time_ns" in ph:
+        t = pd.to_datetime(ph["time_ns"]).astype("int64").to_numpy()
+        n = int(round(np.ptp(t) * 1e-9 * ic["pulse_rate_hz"])) + 1
+    else:
+        n = int(round(np.ptp(ph["x_atc"]) / ic["shot_spacing_m"])) + 1
+    return int(np.clip(n, 1, full))
+
+
 def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new", scheme="new"):
     """30 m along-track segments from classified photons (one row per track x segment).
 
@@ -398,6 +461,7 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
         if not len(sub):
             continue
         sid = np.floor(sub["x_atc"].to_numpy() / L).astype(np.int64)
+        s_first, s_last = sid.min(), sid.max()
         for s, ph in sub.groupby(sid):
             cls = ph[class_col].to_numpy()
             rel = ph[relief_col].to_numpy()
@@ -405,7 +469,7 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
             gr = cls == 1
             if (can.sum() + gr.sum()) < seg["min_photons"]:
                 continue
-            n_shots = ph["shot"].nunique() if "shot" in ph else max(1, int(np.ptp(ph["x_atc"]) / cfg["icesat2"]["shot_spacing_m"]))
+            n_shots = _shots_in_segment(ph, s in (s_first, s_last), cfg)
             br = float(ph["background_rate"].median())
             noise_per_m_shot = br * 2 / C_LIGHT
             can_rel = rel[can]
@@ -440,8 +504,21 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
     out = pd.DataFrame(rows)
     if not len(out):
         return out
-    if scheme == "new":
-        out["canopy_signal_photons"] = out["Ev"] * out["n_shots"]
+    out["canopy_signal_photons"] = out["Ev"] * out["n_shots"]
+    out["ground_signal_photons"] = out["Eg"] * out["n_shots"]
+    if scheme == "new" and "low_signal" in sv:
+        # v0.2: no height where the segment has too little signal to tell bare ground from canopy (NaN, flagged);
+        # 0 m only where there is enough signal and the canopy evidence is weak or below the resolvable height.
+        ls = sv["low_signal"]
+        signal = out["canopy_signal_photons"] + out["ground_signal_photons"]
+        out["low_signal"] = signal < ls["min_signal_photons"]
+        weak_canopy = ((out["n_canopy"] < sv["min_canopy_photons"]) | out["h_canopy"].isna()
+                       | (out["canopy_signal_photons"] < sv.get("min_canopy_signal_photons", 0)))
+        out["short_veg_flag"] = ~out["low_signal"] & (weak_canopy | (out["h_canopy"] < sv["min_resolvable_m"]))
+        out["h_canopy_raw"] = out["h_canopy"]
+        out.loc[out["short_veg_flag"], "h_canopy"] = 0.0
+        out.loc[out["low_signal"], "h_canopy"] = np.nan
+    elif scheme == "new":
         out["short_veg_flag"] = ((out["n_canopy"] < sv["min_canopy_photons"]) | (out["h_canopy"] < sv["min_resolvable_m"])
                                  | out["h_canopy"].isna() | (out["canopy_signal_photons"] < sv.get("min_canopy_signal_photons", 0)))
         out["h_canopy_raw"] = out["h_canopy"]

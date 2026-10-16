@@ -88,19 +88,23 @@ def plot_bias_by_class(tables, title, ax=None, metric="bias"):
     ax.set_ylabel(f"{metric} (m)")
     ax.set_title(title, loc="left", fontsize=11)
     ax.legend(fontsize=8)
+    ax.grid(axis="x", visible=False)
     return ax
 
 
-def plot_scatter(ax, est, ref, title, lim=None):
+def plot_scatter(ax, est, ref, title, lim=None, cmap="Greys"):
+    """Density of ICESat-2 vs reference heights (log counts), 1:1 line, n / bias / RMSE / r. Square panel."""
     est, ref = np.asarray(est, float), np.asarray(ref, float)
     ok = np.isfinite(est) & np.isfinite(ref)
     lim = lim or max(5, np.nanpercentile(np.r_[est[ok], ref[ok]], 99.5))
-    ax.hexbin(ref[ok], est[ok], gridsize=40, extent=(0, lim, 0, lim), mincnt=1, bins="log", cmap="viridis")
-    ax.plot([0, lim], [0, lim], c="k", lw=0.7)
+    hb = ax.hexbin(ref[ok], est[ok], gridsize=40, extent=(0, lim, 0, lim), mincnt=1, bins="log", cmap=cmap, lw=0)
+    ax.plot([0, lim], [0, lim], c="#d7301f", lw=0.8)
     e = est[ok] - ref[ok]
-    ax.text(0.03, 0.97, f"n={ok.sum()}\nbias={e.mean():.2f} m\nRMSE={np.sqrt(np.mean(e**2)):.2f} m",
-            transform=ax.transAxes, va="top", fontsize=8)
-    ax.set_xlabel("reference (m)")
-    ax.set_ylabel("ICESat-2 (m)")
+    r = np.corrcoef(ref[ok], est[ok])[0, 1] if ok.sum() > 2 else np.nan
+    ax.text(0.03, 0.97, f"n = {ok.sum():,}\nbias = {e.mean():+.2f} m\nRMSE = {np.sqrt(np.mean(e**2)):.2f} m\nr = {r:.2f}",
+            transform=ax.transAxes, va="top", fontsize=8, bbox=dict(fc="white", ec="none", alpha=0.8))
+    ax.set_xlim(0, lim); ax.set_ylim(0, lim); ax.set_aspect("equal")
+    ax.set_xlabel("reference height (m)")
+    ax.set_ylabel("ICESat-2 h_canopy (m)")
     ax.set_title(title, fontsize=10, loc="left")
-    return ax
+    return hb

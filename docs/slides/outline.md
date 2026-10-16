@@ -4,6 +4,7 @@ Source for the Google Slides deck linked at the top of `docs/atl03_reclassificat
 following the details. Update this outline and the deck with every significant change to the methods or results.
 Figures: `docs/figures/` (served from GitHub at `https://raw.githubusercontent.com/pahbs/circumpolar_boreal_trends/master/docs/figures/<file>`).
 
+**Deck:** [Google Slides](https://docs.google.com/presentation/d/1L1QN_-S83ehHG6zJWZfWqqmeBviaDbzCudrvp0YADe0/edit)
 **Deck version:** 1 · 15 Oct 2026 · describes config v0.1
 
 ---
