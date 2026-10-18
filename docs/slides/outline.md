@@ -10,7 +10,7 @@ Figures: `docs/figures/` (served from GitHub at `https://raw.githubusercontent.c
 
 **Version 4 (final, 18 Oct 2026), slide by slide:**
 1. Title: "Status update · config v0.6 (final) · 18 October 2026".
-2. **Take-home (new):** "Relabelled photons give more trustworthy heights at both ends; v0.6 is ready for training" with four
+2. **Take-home (new):** "Relabelling removes false shrub heights everywhere; for the night training pool it costs ~1 m in tall forest" with four
    numbers on independent CanElevation lidar, today → v0.6: false shrubs 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+
    forest −4.7 → −2.9 m, r² 0.73 → 0.77; coverage about half (acceptable).
 3. Why we are doing this (unchanged). 4. Words we use (`terms_diagram.png`). 5. The approach in four steps (unchanged).
@@ -22,6 +22,10 @@ Figures: `docs/figures/` (served from GitHub at `https://raw.githubusercontent.c
 11. `11_coverage.png`: half the segments get a height, an acceptable trade.
 12. Production at scale (`08_production_test.png`, v0.6). 13. Rules against overfitting (+ LVIS counts for less).
 14. **Each version fixes the largest error left** (table v0.1–v0.6, central idea, change, result).
+12b. **Training pool (strong beams, sun < 5°):** `11_cohort_summary.png` (kept, false shrubs, bias ≥ 10 m, r², with 95 %
+    intervals) and `11_cohort_bias_by_height.png` / `11_cohort_dropped.png`: false shrubs removed (CanElevation 6 → 2 %), but
+    forest ≥ 10 m ~1 m shorter than today (−1.7 → −2.7 m); a trade-off for the forest part of the pool.
+Slides 2 and 7 use the v0.6 `01_profile_council_01.png` and `03_steps_example.png`.
 15. **Open issues for production:** tall forest still 2–3 m short (ground too high under dense canopy); plausibility cap for
     rare implausible tundra heights; footprint-level reference metric; NEON / Nordic validation; canopy cover on hold.
 

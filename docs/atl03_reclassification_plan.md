@@ -1,6 +1,6 @@
 # Reclassifying ICESat-2 v7 ATL03 photons to build better 30 m vegetation heights and canopy cover
 
-**Status:** v0.6 final for training (18 Oct 2026; versions v0.1–v0.6 in the LOG and methods §8); see `atl03_reclassification_LOG.md` · **Drafted:** 14 Oct 2026 · **Owner:** Paul Montesano
+**Status:** v0.6 final of this series, a trade-off for the night / low-sun training pool (18 Oct 2026; versions v0.1–v0.6 in the LOG and methods §8); see `atl03_reclassification_LOG.md` · **Drafted:** 14 Oct 2026 · **Owner:** Paul Montesano
 
 ## 1. Why
 

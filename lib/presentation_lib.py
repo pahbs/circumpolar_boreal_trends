@@ -73,7 +73,7 @@ def load_all(work):
         a = a[keep(a)]
         parts.append(pd.DataFrame({"reference": ref, "region": a[region], "ref_h": a[ref_h], TODAY: a.h_canopy_phoreal,
                                    CONTROL: a.h_canopy_atl08, **{x: a.get(_vcol(x), np.nan) for x in VERSIONS[1:]},
-                                   "solar_elevation": a.solar_elevation, "strong": a.strong,
+                                   "solar_elevation": a.solar_elevation, "strong": a.strong, "track": a.track_id,
                                    "slope_deg": a.get("ground_slope_deg_" + LATEST.replace(".", ""))}))
     # G-LiHT (notebook 05) and Seward (notebook 01): one version per run folder (v0.3 not run here)
     k = ["track_id", "seg"]
@@ -97,7 +97,7 @@ def load_all(work):
             parts.append(pd.DataFrame({"reference": r, "region": a.get("region", pd.Series("Seward", index=a.index)).fillna("Seward"),
                                        "ref_h": ref_h, TODAY: a.h_canopy_phoreal, CONTROL: a.h_canopy_atl08,
                                        **{x: a.get(_vcol(x), np.nan) for x in VERSIONS[1:]}, "solar_elevation": a.solar_elevation,
-                                       "strong": a.strong, "slope_deg": a.get("ground_slope_deg")}))
+                                       "strong": a.strong, "track": a.track_id, "slope_deg": a.get("ground_slope_deg")}))
     d = pd.concat(parts, ignore_index=True)
     d = d[np.isfinite(d.ref_h)].copy()
     d["light"] = np.where(d.solar_elevation > 0, "day", "night")
@@ -168,8 +168,9 @@ def style_axes(ax, ylabel=None, zero_line=True):
         ax.set_ylabel(ylabel, color=INK2)
 
 
-def grouped_bars(ax, table, categories, versions, value, width=0.84, gap=0.04, fmt=None, label_versions=()):
-    """Bars per category, one per version (fixed order and colour); a small gap separates neighbours."""
+def grouped_bars(ax, table, categories, versions, value, width=0.84, gap=0.04, fmt=None, label_versions=(), err=None):
+    """Bars per category, one per version (fixed order and colour); a small gap separates neighbours. err=(lo, hi) column
+    names draw 95 % interval whiskers."""
     if not versions or not len(table):
         ax.text(0.5, 0.5, "not run yet", transform=ax.transAxes, ha="center", color=MUTED); return
     nv = len(versions); w = width / nv
@@ -177,6 +178,10 @@ def grouped_bars(ax, table, categories, versions, value, width=0.84, gap=0.04, f
         t = table[table.version == v].set_index("cat").reindex(categories)
         x = np.arange(len(categories)) - width / 2 + (j + 0.5) * w
         ax.bar(x, t[value].to_numpy(), w - gap, color=COLORS[v], label=LABELS[v], zorder=2)
+        if err and err[0] in t:
+            y = t[value].to_numpy()
+            ax.errorbar(x, y, yerr=[np.clip(y - t[err[0]].to_numpy(), 0, None), np.clip(t[err[1]].to_numpy() - y, 0, None)],
+                        fmt="none", ecolor=INK2, elinewidth=0.9, capsize=2, zorder=3)
         if v in label_versions and fmt:
             for xi, yi in zip(x, t[value].to_numpy()):
                 if np.isfinite(yi):
@@ -319,3 +324,68 @@ def validation_map(sites, add_basemap=None, map_axes=None):
                mpatches.Patch(color="#d6cfb4", alpha=0.6, label="boreal / tundra tile domain")]
     fig.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=3, frameon=False, fontsize=9)
     return fig
+
+
+# ------------------------------------------------------------------ training cohort: strong beams, sun < 5°
+
+COHORT_MAX_SUN = 5.0     # degrees; the biomass training pool uses strong beams with solar elevation below this
+
+
+def training_cohort(d, max_sun=COHORT_MAX_SUN):
+    """Segments of the biomass training pool: strong beams with solar elevation < max_sun (night, plus low-sun summer
+    observations where there would otherwise be none). Adds `light2` = night (sun <= 0) / low sun (0 to max_sun)."""
+    c = d[d.strong.astype(bool) & (d.solar_elevation < max_sun)].copy()
+    c["light2"] = np.where(c.solar_elevation <= 0, "night", f"low sun (0–{max_sun:g}°)")
+    return c
+
+
+def _stats(g, v):
+    e = g[v] - g.ref_h
+    bare, forest = g.ref_h < 1, g.ref_h >= 5
+    return {"bias": e.mean(), "rmse": np.sqrt((e ** 2).mean()), "r2": val.r_squared(g[v], g.ref_h) if len(g) > 2 else np.nan,
+            "spurious_veg": (bare & (g[v] > 2)).sum() / bare.sum() if bare.sum() >= 10 else np.nan,
+            "forest_at_0m": (forest & (g[v] == 0)).sum() / forest.sum() if forest.sum() >= 10 else np.nan,
+            "bias_short_0-2m": e[g.ref_h < 2].mean(), "bias_tall_10m+": e[g.ref_h >= 10].mean(), "bias_20m+": e[g.ref_h >= 20].mean()}
+
+
+def cohort_summary(c, versions, n_boot=500, seed=0, ci_cols=("bias", "rmse", "r2", "spurious_veg", "bias_tall_10m+", "bias_short_0-2m")):
+    """Per reference x version, in the cohort: n, coverage, share of today's heights kept, and on the segments every
+    version in `versions` reports: bias, RMSE, r², false vegetation, forest at 0 m, bias < 2 m / >= 10 m / >= 20 m, with
+    95 % intervals from a bootstrap that resamples whole tracks (segments along a track are not independent)."""
+    rng = np.random.default_rng(seed); rows = []
+    for ref, ga in c.groupby("reference"):
+        g = ga.dropna(subset=versions)
+        tracks = g.track.unique()
+        cov_today = ga[TODAY].notna().mean()
+        boots = {v: [] for v in versions}
+        if len(tracks) >= 5:
+            by = {t: x for t, x in g.groupby("track")}
+            for _ in range(n_boot):
+                s = pd.concat([by[t] for t in rng.choice(tracks, len(tracks))])
+                for v in versions:
+                    boots[v].append(_stats(s, v))
+        for v in versions:
+            r = {"reference": ref, "version": v, "n_cohort": len(ga), "n_common": len(g), "tracks": len(tracks),
+                 "coverage": ga[v].notna().mean(), "kept_vs_today": ga[v].notna().mean() / cov_today, **_stats(g, v)}
+            if boots[v]:
+                B = pd.DataFrame(boots[v])
+                for k in ci_cols:
+                    r[f"{k}_lo"], r[f"{k}_hi"] = B[k].quantile(0.025), B[k].quantile(0.975)
+            rows.append(r)
+    return pd.DataFrame(rows)
+
+
+def cohort_dropped(c, v):
+    """Segments where today reports a height and version v does not: how many, how tall the reference is there, and how
+    wrong today's height was on them (vs on the segments v keeps)."""
+    rows = []
+    for ref, g in c.groupby("reference"):
+        has = g[TODAY].notna()
+        lost, kept = g[has & g[v].isna()], g[has & g[v].notna()]
+        err = lambda x: (x[TODAY] - x.ref_h)
+        rows.append({"reference": ref, "today_n": int(has.sum()), "dropped_n": len(lost), "dropped_share": len(lost) / max(1, has.sum()),
+                     "dropped_ref_lt1m": (lost.ref_h < 1).mean(), "dropped_ref_1_5m": lost.ref_h.between(1, 5, inclusive="left").mean(),
+                     "dropped_ref_ge5m": (lost.ref_h >= 5).mean(), "kept_ref_ge5m": (kept.ref_h >= 5).mean(),
+                     "today_mae_dropped": err(lost).abs().mean(), "today_mae_kept": err(kept).abs().mean(),
+                     "today_bias_dropped": err(lost).mean()})
+    return pd.DataFrame(rows)

@@ -13,15 +13,19 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (18 Oct 2026): final.** **v0.6 is the version to train the biomass maps with** (entries 18 Oct). Against
-CanElevation (independent discrete-return lidar, the reference that counts most), same segments, today → v0.6: false shrubs
-over bare ground 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+ forest −4.7 → −2.9 m, r² 0.73 → 0.77, RMSE 3.87 →
-3.65 m, forest called bare 1 → 5 %, coverage 94 → 51 % (acceptable: the multi-year models have surplus samples). Development
-sites agree (G-LiHT false shrubs 30 → 10 %, 20 m+ −6.7 → −3.5 m, r² 0.39 → 0.56; Seward drone bias +1.5 → 0.0 m, false shrubs
-39 → 7 %). LVIS counts for less (waveform noise floor). v0.4 is within 0.2–0.3 m of v0.6 in CanElevation tall forest and
-v0.6 is better on short vegetation everywhere. All notebooks (00–11), methods, deck and figures describe v0.6.
+**Status (18 Oct 2026): v0.6 is the final version of this series; for the training pool it is a trade-off** (entries
+18 Oct, "Training pool"). **All observations**, CanElevation (independent discrete-return lidar), same segments, today →
+v0.6: false shrubs over bare ground 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+ forest −4.7 → −2.9 m, r² 0.73 → 0.77,
+forest called bare 1 → 5 %, coverage 94 → 51 % (acceptable). **Training pool (strong beams, solar elevation < 5°):** today is
+already good (CanElevation r² 0.86, false shrubs 6 %); v0.6 removes most false shrubs (CanElevation 6 → 2 %, G-LiHT 37 → 15 %,
+Seward 25 → 6 %), keeps 74–84 % of today's heights, but reads forest ≥ 10 m about 1 m shorter (CanElevation −1.7 → −2.7 m,
+G-LiHT −1.8 → −2.8 m) and writes 3–8 % of forest as 0 m: it fails the tall-forest rule for this cohort. **v0.6 is the better
+input over tundra and shrubland; for the forest part of the night / low-sun pool it is not yet better than today.**
+LVIS counts for less. All notebooks (00–11), methods, deck and figures describe v0.6.
 
-**Open issues for production (not blocking):**
+**Open issues:**
+0. **Training pool, forest:** keep more night canopy photons (v0.6 labels 19 % of night strong-beam canopy photons as
+   noise, ATL08 11 %) and stop zeros over forest; or use v0.6 only to remove false heights over short vegetation.
 1. Tall forest still 2–3 m short against canopy-height-model lidar; the ground sits > 1 m too high under a fifth to a third
    of 15 m+ segments in every version (dense canopy, ≤ 2 ground photons per 10 m bin).
 2. Rare implausible heights over tundra (one segment at 38 m over < 2 m Seward tundra; LVIS 0–1 m non-zero heights +9 m):
@@ -41,7 +45,7 @@ methods §8; evidence: the dated entries below.
 
 | Version | Central idea (why it was made) | What changed | Result | Status |
 |---|---|---|---|---|
-| **v0.6** (18 Oct) | **v0.5's ground, without losing sparse ground under dense canopy.** v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m. | `ground.dense_min_photons` 3 → 1 (fraction test only). | CanElevation r² 0.770 (v0.4 0.775, v0.5 0.760), false vegetation 4.4 %, 20 m+ −2.93 m (v0.4 −2.67, v0.5 −3.29); G-LiHT r² 0.575; Seward bias 0.0 m. | **final, for training** |
+| **v0.6** (18 Oct) | **v0.5's ground, without losing sparse ground under dense canopy.** v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m. | `ground.dense_min_photons` 3 → 1 (fraction test only). | CanElevation r² 0.770 (v0.4 0.775, v0.5 0.760), false vegetation 4.4 %, 20 m+ −2.93 m (v0.4 −2.67, v0.5 −3.29); G-LiHT r² 0.575; Seward bias 0.0 m. Training pool (strong, sun < 5°): false shrubs removed, forest ≥ 10 m ~1 m shorter than today. | **final of this series; trade-off for the training pool** |
 | v0.5 (17 Oct) | **Put the ground where the photons are.** In v0.4's false heights over bare ground (G-LiHT ALS < 1 m, v0.4 > 0 m) the ground was > 1 m off in 30 % and ground photons were called canopy in 25 %; photons below the surface (after-pulses under bright or specular surfaces, daytime clusters) pulled the lower envelope down. | First ground guess per 10 m bin = lowest layer (2 × 0.6 m) with ≥ half the densest layer's photons (`ground.start: lowest_dense_layer`), not the 5th percentile of signal photons. | Development sites (harness): r² 0.51 → 0.55, false vegetation 16 → 13 %, tall forest 0.1–0.2 m lower. Independent: short vegetation better everywhere, tall forest ~0.5 m shorter on CanElevation. | replaced by v0.6 |
 | **v0.4** (17 Oct) | **Tell bare ground from vegetation correctly.** v0.3's short-vegetation gains came from writing 0 m, also over real forest; and on slopes the ground was found metres too low, so ground photons became "canopy". | (A) ground window widens with along-track slope (± 0.6 m + 5.5 m × slope); (B) one presence test on all photons above the ground (3σ over solar background) + "would a 25 %-cover canopy have been seen?" decide height / 0 m / NaN. Old 0 m rule removed. | Independent (LVIS + CanElevation): forest at 0 m 6.2 → 2.8 %, false vegetation 7.2 → 6.3 % (today 16 %), big gains on slopes; CanElevation best on every measure but coverage; LVIS r² 0.51 → 0.46 and RMSE up (heights of newly detected short vegetation unreliable); coverage 62–64 → 51–52 % (today 88–95 %). | tested; not adopted for training; leads to v0.5 |
 | v0.3 (15–16 Oct) | **Stop solar noise from inventing tall canopy tops.** > 30 m "canopy" over tundra in bright daylight. | Canopy-top recovery needs 3σ over background; column-test top = plateau, not maximum. | LVIS: spurious vegetation 47 → 12 %, tall forest nearly unbiased. **But** short-vegetation gains were mostly zeros, and 6–12 % of forest ≥ 5 m was 0 m (16 Oct). | replaced by v0.4 |
@@ -85,6 +89,30 @@ NEON needs an API token (Paul to create). Canopy cover on hold.
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-18 · Training pool (strong beams, sun < 5°): v0.6 removes false shrubs but shortens forest by ~1 m (Paul Montesano's question)
+
+**Question:** the biomass training pool uses strong beams at night and with the sun < 5° (low-sun summer observations). What
+does v0.6 do to that cohort? Notebook 11, section 6 (`runs/v0.6/cohort_summary.csv`, `cohort_dropped.csv`; figures
+`11_cohort_*.png`): 12,969 cohort segments with a reference (9,554 night, 3,415 low sun); same segments for today, v0.4,
+v0.5, v0.6; 95 % intervals from resampling whole tracks.
+
+| cohort, today → v0.6 | CanElevation (32 tracks) | G-LiHT (48) | LVIS (77; low weight) | Seward drone (10) |
+|---|---|---|---|---|
+| today's heights dropped | 20 % | 26 % | 16 % | 7 % |
+| false shrubs | 5.9 → 2.0 % | 37 → 15 % | 11 → 6 % | 25 → 6 % |
+| bias < 2 m (m) | +0.84 → +0.07 | +3.3 → +1.3 | +2.2 → +0.8 | +1.1 → −0.2 |
+| bias ≥ 10 m (m) | −1.66 → −2.72 | −1.80 → −2.77 | +2.7 → +1.4 | — |
+| forest ≥ 5 m at 0 m | 0 → 3.0 % | 0 → 8.0 % | 0 → 1.3 % | — |
+| r² | 0.855 → 0.846 | 0.45 → 0.66 | 0.42 → 0.55 | 0.46 → 0.35 |
+| RMSE (m) | 3.19 → 3.45 | 6.20 → 4.48 | 7.19 → 5.22 | 1.62 → 1.29 |
+
+Night alone, CanElevation: forest ≥ 10 m −1.44 → −2.99 m, r² 0.81 → 0.77. Dropped heights were today's worse ones (mean
+absolute error 2.9 vs 1.9 m CanElevation, 5.6 vs 3.1 m G-LiHT; 31–50 % over forest ≥ 5 m). Seward field: bias +0.5 → −1.0 m.
+**Reading:** for the training pool v0.6 fails the tall-forest rule on both canopy-height-model references. A diagnostic
+(keep today's height where v0.6 reports ≥ 2 m; not tuned, not adopted) recovers only part (CanElevation −2.1 m) because
+v0.6's zeros over forest also lower the bias. Cause on record: night canopy photons labelled noise (v0.6 0.19 vs ATL08 0.11,
+notebook 03) and the ground under dense canopy (entry below). Decision for training is Paul Montesano's.
 
 ## 2026-10-18 · Ground vs lidar DTM by canopy height (G-LiHT, CanElevation); v0.6 drops v0.5's 3-photon minimum
 
