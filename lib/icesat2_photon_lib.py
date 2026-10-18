@@ -257,20 +257,72 @@ def _rolling_median(v, n):
     return pd.Series(v).rolling(n, center=True, min_periods=1).median().to_numpy()
 
 
-def ground_surface(x, h, signal, cfg):
-    """Step 2. Ground surface from the lower envelope of signal photons, refined iteratively.
-    Returns the surface height at every photon and the along-track ground spread (robust sigma)."""
+def ground_halfwidth(slope, cfg):
+    """Vertical half-width of the ground returns at a given along-track ground slope (m/m).
+
+    v0.4 (`ground.slope_window`): a footprint of diameter D on a slope tan(theta) returns ground photons over
+    +/- D/2 x tan(theta) around its centre, so the ground window is halfwidth_m + D/2 x slope. Without it (v0.1-v0.3) the
+    window is a fixed halfwidth_m, which on slopes misses the upslope ground returns: the surface then sits too low and
+    ground photons are labelled canopy (LOG, 17 Oct 2026). Across-track slope is unknown from one beam and not added."""
+    gc = cfg["reclass"]["ground"]
+    if not gc.get("slope_window", False):
+        return np.full(np.shape(slope), float(gc["halfwidth_m"]))
+    return gc["halfwidth_m"] + cfg["icesat2"]["footprint_diameter_m"] / 2.0 * np.abs(np.nan_to_num(slope))
+
+
+def lowest_dense_layer(hs, bs, n_bins, thickness, frac, min_n=3):
+    """v0.5 first ground guess per along-track bin: the median height of the LOWEST layer (`thickness` m thick) that holds
+    at least `frac` x the photons of the bin's densest layer (and >= min_n photons); NaN where none.
+
+    v0.1-v0.4 started from a low percentile of all signal photons (lower envelope). Photons a few metres below the
+    surface that pass the noise filter (detector after-pulses under bright or specular surfaces such as water, daytime
+    background clusters) pulled that envelope down; the iterations then kept the surface metres too low and called
+    the true surface canopy (LOG 17 Oct 2026, v0.5). Such photons are sparse next to the surface return, so the lowest
+    layer with at least half the densest layer's photons is the surface. hs, bs: signal photon heights and bin indices.
+
+    min_n: v0.5 also required >= 3 photons in the layer. Under dense tall canopy a 10 m bin often holds only 1-2 ground
+    photons, so the layer test skipped the ground and started on a canopy layer: the ground rose > 1 m in 8-15 % of
+    CanElevation segments >= 10 m and tall forest came out ~0.5 m shorter than v0.4 (LOG 17 Oct 2026). v0.6
+    (`ground.dense_min_photons: 1`) keeps only the fraction test."""
+    out = np.full(n_bins, np.nan)
+    order = np.lexsort((hs, bs))
+    hs, bs = np.asarray(hs, float)[order], np.asarray(bs)[order]
+    starts = np.searchsorted(bs, np.arange(n_bins))
+    ends = np.searchsorted(bs, np.arange(n_bins), side="right")
+    for b in range(n_bins):
+        h = hs[starts[b]:ends[b]]
+        if len(h) < min_n:
+            continue
+        n = np.searchsorted(h, h + thickness, side="right") - np.arange(len(h))   # photons in [h_i, h_i + thickness]
+        ok = np.flatnonzero((n >= frac * n.max()) & (n >= min_n))
+        if len(ok):
+            i = ok[0]
+            out[b] = np.median(h[i:i + n[i]])
+    return out
+
+
+def ground_surface(x, h, signal, cfg, return_slope=False):
+    """Step 2. Ground surface from the lower envelope of signal photons (v0.5 `ground.start: lowest_dense_layer`: from the
+    lowest dense layer, see lowest_dense_layer), refined iteratively.
+    Returns the surface height at every photon and the along-track ground spread (robust sigma); with
+    return_slope=True also the along-track ground slope (m/m) at every photon."""
     gc = cfg["reclass"]["ground"]
     edges = np.arange(np.floor(x.min()), x.max() + gc["bin_m"], gc["bin_m"])
     centers = 0.5 * (edges[:-1] + edges[1:])
     b = np.clip(np.digitize(x, edges) - 1, 0, len(centers) - 1)
     xs, hs, bs = x[signal], h[signal], b[signal]
     if len(xs) < 3:
-        return np.full_like(h, np.nan, dtype=float), np.full_like(h, np.nan, dtype=float)
-    df = pd.DataFrame({"b": bs, "h": hs})
-    env = df.groupby("b")["h"].quantile(gc["envelope_pct"] / 100.0)
-    surf_bins = np.full(len(centers), np.nan)
-    surf_bins[env.index.to_numpy()] = env.to_numpy()
+        nan = np.full_like(h, np.nan, dtype=float)
+        return (nan, nan.copy(), nan.copy()) if return_slope else (nan, nan.copy())
+    if gc.get("start", "envelope") == "lowest_dense_layer":
+        # v0.5: first guess = lowest dense layer, so stray photons below the surface cannot pull the ground down
+        surf_bins = lowest_dense_layer(hs, bs, len(centers), 2 * gc["halfwidth_m"], gc["dense_frac"],
+                                       gc.get("dense_min_photons", 3))
+    else:
+        df = pd.DataFrame({"b": bs, "h": hs})
+        env = df.groupby("b")["h"].quantile(gc["envelope_pct"] / 100.0)
+        surf_bins = np.full(len(centers), np.nan)
+        surf_bins[env.index.to_numpy()] = env.to_numpy()
     sigma_bins = np.full(len(centers), np.nan)
     for _ in range(gc["n_iter"]):
         valid = np.isfinite(surf_bins)
@@ -279,7 +331,8 @@ def ground_surface(x, h, signal, cfg):
         filled = np.interp(centers, centers[valid], surf_bins[valid])
         filled = _rolling_median(filled, gc["smooth_bins"])
         surf_ph = np.interp(xs, centers, filled)
-        near = np.abs(hs - surf_ph) <= gc["halfwidth_m"]
+        slope_ph = np.interp(xs, centers, np.gradient(filled, centers)) if len(centers) > 1 else np.zeros(len(xs))
+        near = np.abs(hs - surf_ph) <= ground_halfwidth(slope_ph, cfg)
         if near.sum() < 3:
             break
         d = pd.DataFrame({"b": bs[near], "r": hs[near] - surf_ph[near]})
@@ -291,10 +344,13 @@ def ground_surface(x, h, signal, cfg):
         sigma_bins[mad.index.to_numpy()] = mad.to_numpy()
     valid = np.isfinite(surf_bins)
     if valid.sum() < 2:
-        return np.full_like(h, np.nan, dtype=float), np.full_like(h, np.nan, dtype=float)
+        nan = np.full_like(h, np.nan, dtype=float)
+        return (nan, nan.copy(), nan.copy()) if return_slope else (nan, nan.copy())
     filled = _rolling_median(np.interp(centers, centers[valid], surf_bins[valid]), gc["smooth_bins"])
     sv = np.isfinite(sigma_bins)
     sig = np.interp(centers, centers[sv], sigma_bins[sv]) if sv.sum() >= 2 else np.full(len(centers), gc["halfwidth_m"] / 2)
+    if return_slope:
+        return np.interp(x, centers, filled), np.interp(x, centers, sig), np.interp(x, centers, np.gradient(filled, centers))
     return np.interp(x, centers, filled), np.interp(x, centers, sig)
 
 
@@ -342,8 +398,9 @@ def canopy_column_top(x, relief, background_rate, min_rel, cfg):
     return top
 
 
-def classify_track(x, h, background_rate, cfg):
-    """Steps 1-3 for one granule x beam track. Returns (class, relief, signal, ground_sigma)."""
+def classify_track(x, h, background_rate, cfg, extra=False):
+    """Steps 1-3 for one granule x beam track. Returns (class, relief, signal, ground_sigma); with extra=True also a
+    dict with the per-photon canopy floor (relief above which a photon can be canopy, m) and ground slope (m/m)."""
     cc = cfg["reclass"]["canopy"]
     gc = cfg["reclass"]["ground"]
     order = np.argsort(x)
@@ -352,11 +409,13 @@ def classify_track(x, h, background_rate, cfg):
     x, h, br = np.asarray(x, float)[order], np.asarray(h, float)[order], np.asarray(background_rate, float)[order]
 
     signal, _, _ = noise_filter(x, h, br, cfg)
-    surf, gsig = ground_surface(x, h, signal, cfg)
+    surf, gsig, slope = ground_surface(x, h, signal, cfg, return_slope=True)
     relief = h - surf
+    hw = ground_halfwidth(slope, cfg)                       # = halfwidth_m unless ground.slope_window (v0.4)
     cls = np.zeros(len(h), dtype=np.int8)
-    cls[signal & (np.abs(relief) <= gc["halfwidth_m"])] = 1
-    min_rel = np.maximum(cc["min_relief_m"], cc["ground_sigma_k"] * np.nan_to_num(gsig, nan=0.0))
+    cls[signal & (np.abs(relief) <= hw)] = 1
+    # canopy starts above the ground spread; v0.4 adds the slope part of the ground window (0 on flat ground)
+    min_rel = np.maximum(cc["min_relief_m"], cc["ground_sigma_k"] * np.nan_to_num(gsig, nan=0.0)) + (hw - gc["halfwidth_m"])
     cls[signal & (relief > min_rel) & (relief <= cc["max_relief_m"])] = 2
     if cc.get("column", {}).get("enabled", False):
         # v0.2: photons above the ground and below the column canopy top are canopy even if the box filter missed them
@@ -385,6 +444,8 @@ def classify_track(x, h, background_rate, cfg):
                     need = np.maximum(need, lam + cc["toc_k_sigma"] * np.sqrt(lam))
                 idx = np.where(cand)[0][nn >= need]
                 cls[idx] = 3
+    if extra:
+        return cls[inv], relief[inv], signal[inv], gsig[inv], {"canopy_floor": min_rel[inv], "ground_slope": slope[inv]}
     return cls[inv], relief[inv], signal[inv], gsig[inv]
 
 
@@ -396,17 +457,21 @@ def reclassify(photons, cfg):
     rel_all = np.full(n, np.nan)
     sig_all = np.zeros(n, dtype=bool)
     gs_all = np.full(n, np.nan)
+    floor_all = np.full(n, np.nan)
+    slope_all = np.full(n, np.nan)
     pos = pd.Series(np.arange(n), index=photons.index)
     for _, idx in photons.groupby("track_id").groups.items():
         sub = photons.loc[idx]
         if len(sub) < 10:
             continue
-        cls, rel, sig, gs = classify_track(sub["x_atc"].to_numpy(), sub["height"].to_numpy(),
-                                           sub["background_rate"].to_numpy(), cfg)
+        cls, rel, sig, gs, ex = classify_track(sub["x_atc"].to_numpy(), sub["height"].to_numpy(),
+                                               sub["background_rate"].to_numpy(), cfg, extra=True)
         p = pos.loc[idx].to_numpy()
         cls_all[p], rel_all[p], sig_all[p], gs_all[p] = cls, rel, sig, gs
+        floor_all[p], slope_all[p] = ex["canopy_floor"], ex["ground_slope"]
     photons["class_new"], photons["relief_new"] = cls_all, rel_all
     photons["signal_new"], photons["ground_sigma_new"] = sig_all, gs_all
+    photons["canopy_floor_new"], photons["ground_slope_new"] = floor_all, slope_all
     return photons
 
 
@@ -510,9 +575,13 @@ def _segments_table(photons, cfg, class_col, relief_col):
     dc = d[can]
     gc = dc.groupby(keys)["rel"]
     pcts = sorted(set(seg["rh_percentiles"]) | {98, 100})
-    q = gc.quantile([x / 100 for x in pcts]).unstack()
-    q.columns = [f"rh{int(round(c * 100))}" for c in q.columns]
-    out = out.join(q)
+    rh_cols = [f"rh{p}" for p in pcts]
+    if len(dc):
+        q = gc.quantile([x / 100 for x in pcts]).unstack()
+        q.columns = [f"rh{int(round(c * 100))}" for c in q.columns]
+    else:                                   # no canopy photon in any segment (e.g. bare tundra with ATL08 classes)
+        q = pd.DataFrame(index=out.index, columns=rh_cols, dtype=float)
+    out = out.join(q.reindex(columns=rh_cols))
     out["h_canopy"] = out["rh98"]; out["h_max_canopy"] = out["rh100"]
     out["h_mean_canopy"] = gc.mean().reindex(out.index)
     out["h_te_median"] = d[gr].groupby(keys)["height"].median().reindex(out.index)
@@ -539,6 +608,51 @@ def _segments_table(photons, cfg, class_col, relief_col):
     for c in ("n_canopy", "n_ground", "n_noise", "n_shots"):
         out[c] = out[c].astype(int)
     return out
+
+
+def vegetation_presence(photons, segs, cfg, relief_col="relief_new"):
+    """v0.4: is there vegetation above the ground in each 30 m segment, and could it have been seen?
+
+    Presence: ALL photons of the segment (any class, so the test does not depend on how the noise filter and canopy
+    rules labelled them) with relief between the canopy floor and max_relief_m are sorted by relief. For each height z,
+    excess(z) = N(z) - mu(z), with mu(z) = background rate x 2/c x shots x (z - floor) the solar background expected
+    between the floor and z. presence_sigma = max over z of excess / sqrt(mu + 1) (Poisson); vegetation is present if
+    it is >= k_sigma. Only instrument quantities, as in the noise filter and the column test.
+
+    Detectability: a canopy covering min_cover of the footprint with canopy/ground reflectance ratio min_ratio returns
+    about Ng x min_ratio x c / (1 - c) photons for Ng ground photons (Purslow et al. 2023, Eq. 1-2). It would have been
+    seen if that number is >= k_sigma x sqrt(mu_layer + 1), mu_layer being the background in the lowest layer_m above
+    the floor. Returns presence_sigma, presence_top_m (z of the maximum), veg_present, veg_detectable, ground_slope_deg."""
+    pc = cfg["reclass"]["short_veg"]["presence"]
+    L = cfg["segments"]["length_m"]
+    keys = ["track_id", "seg"]
+    p = photons[np.isfinite(photons[relief_col])]
+    floor = p["canopy_floor_new"].to_numpy() if "canopy_floor_new" in p else np.full(len(p), cfg["reclass"]["canopy"]["min_relief_m"])
+    d = pd.DataFrame({"track_id": p["track_id"].to_numpy(), "seg": np.floor(p["x_atc"].to_numpy() / L).astype(np.int64),
+                      "rel": p[relief_col].to_numpy(), "floor": floor,
+                      "slope": p["ground_slope_new"].to_numpy() if "ground_slope_new" in p else np.zeros(len(p))})
+    s = segs.set_index(keys)[["n_shots", "background_rate", "ground_signal_photons"]].copy()
+    g = d.groupby(keys)
+    s["floor"] = g["floor"].median().reindex(s.index)
+    s["ground_slope_deg"] = np.degrees(np.arctan(g["slope"].median().abs())).reindex(s.index)
+    per_m = s["background_rate"] * 2.0 / C_LIGHT * s["n_shots"]                 # background photons per m of height
+    a = d.join(s[["floor"]].rename(columns={"floor": "sfloor"}), on=keys).join(per_m.rename("per_m"), on=keys)
+    a = a[(a["rel"] > a["sfloor"]) & (a["rel"] <= cfg["reclass"]["canopy"]["max_relief_m"])].sort_values(keys + ["rel"])
+    a["N"] = a.groupby(keys).cumcount() + 1
+    a["mu"] = a["per_m"] * (a["rel"] - a["sfloor"])
+    a["S"] = (a["N"] - a["mu"]) / np.sqrt(a["mu"] + 1.0)
+    if len(a):
+        best = a.loc[a.groupby(keys)["S"].idxmax(), keys + ["S", "rel"]].set_index(keys)
+        s["presence_sigma"] = best["S"].reindex(s.index).fillna(0.0)
+        s["presence_top_m"] = best["rel"].reindex(s.index)
+    else:
+        s["presence_sigma"], s["presence_top_m"] = 0.0, np.nan
+    s["veg_present"] = s["presence_sigma"] >= pc["k_sigma"]
+    c = pc["min_cover"]
+    expected = s["ground_signal_photons"] * pc["min_ratio"] * c / (1.0 - c)
+    s["veg_detectable"] = expected >= pc["k_sigma"] * np.sqrt(per_m * pc["layer_m"] + 1.0)
+    cols = ["presence_sigma", "presence_top_m", "veg_present", "veg_detectable", "ground_slope_deg"]
+    return segs.join(s[cols], on=keys)
 
 
 def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new", scheme="new", fast=None):
@@ -611,7 +725,23 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
         return out
     out["canopy_signal_photons"] = out["Ev"] * out["n_shots"]
     out["ground_signal_photons"] = out["Eg"] * out["n_shots"]
-    if scheme == "new" and "low_signal" in sv:
+    if scheme == "new" and "presence" in sv:
+        # v0.4: one decision from one test (vegetation_presence). Vegetation present -> a height (NaN if too few
+        # canopy photons to place RH98: present but not measurable). Not present and a canopy would have been seen ->
+        # 0 m. Not present and it could not have been seen, or too little signal overall -> NaN (low_signal).
+        out = vegetation_presence(photons, out, cfg, relief_col)
+        ls = sv["low_signal"]
+        enough = (out["canopy_signal_photons"] + out["ground_signal_photons"]) >= ls["min_signal_photons"]
+        present, detect = out["veg_present"], out["veg_detectable"]
+        measurable = (out["n_canopy"] >= sv["min_canopy_photons"]) & out["h_canopy"].notna()
+        out["h_canopy_raw"] = out["h_canopy"]
+        out["short_veg_flag"] = enough & ~present & detect                         # 0 m: vegetation demonstrably absent
+        out["veg_unmeasured"] = enough & present & ~measurable                    # vegetation seen, height not measurable
+        out["low_signal"] = ~enough | (~present & ~detect)
+        out.loc[out["short_veg_flag"], "h_canopy"] = 0.0
+        out.loc[present & measurable & (out["h_canopy"] < sv["min_resolvable_m"]), "h_canopy"] = 0.0
+        out.loc[out["low_signal"] | out["veg_unmeasured"], "h_canopy"] = np.nan
+    elif scheme == "new" and "low_signal" in sv:
         # v0.2: no height where the segment has too little signal to tell bare ground from canopy (NaN, flagged);
         # 0 m only where there is enough signal and the canopy evidence is weak or below the resolvable height.
         ls = sv["low_signal"]

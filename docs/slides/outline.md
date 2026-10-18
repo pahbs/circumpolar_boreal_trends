@@ -5,7 +5,27 @@ following the details. Update this outline and the deck with every significant c
 Figures: `docs/figures/` (served from GitHub at `https://raw.githubusercontent.com/pahbs/circumpolar_boreal_trends/master/docs/figures/<file>`).
 
 **Deck:** [Google Slides](https://docs.google.com/presentation/d/1L1QN_-S83ehHG6zJWZfWqqmeBviaDbzCudrvp0YADe0/edit)
-**Deck version:** 2 · 15 Oct 2026 · describes config v0.2
+**Deck version:** 4 · 18 Oct 2026 · **final: config v0.6**. Figures from notebook 11 (`runs/v0.6/figures/`, copied to
+`docs/figures/`), served from GitHub raw URLs.
+
+**Version 4 (final, 18 Oct 2026), slide by slide:**
+1. Title: "Status update · config v0.6 (final) · 18 October 2026".
+2. **Take-home (new):** "Relabelled photons give more trustworthy heights at both ends; v0.6 is ready for training" with four
+   numbers on independent CanElevation lidar, today → v0.6: false shrubs 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+
+   forest −4.7 → −2.9 m, r² 0.73 → 0.77; coverage about half (acceptable).
+3. Why we are doing this (unchanged). 4. Words we use (`terms_diagram.png`). 5. The approach in four steps (unchanged).
+6. **Where we checked:** `11_validation_map.png` (independent LVIS 2019, CanElevation; development G-LiHT, Seward drone + field).
+7. Four rules relabel each photon (ground rule = lowest dense layer, v0.5–v0.6).
+8. `11_false_vegetation_and_zeros.png`: false shrubs 14–39 % → 4–10 %; cost: 2–8 % of forest called bare.
+9. `11_bias_by_height.png`: short vegetation no longer inflated; tall forest less underestimated.
+10. `11_scatter_today_vs_best.png`: agreement rises (CanElevation r² 0.72 → 0.77, G-LiHT 0.39 → 0.56); one 38 m tundra outlier.
+11. `11_coverage.png`: half the segments get a height, an acceptable trade.
+12. Production at scale (`08_production_test.png`, v0.6). 13. Rules against overfitting (+ LVIS counts for less).
+14. **Each version fixes the largest error left** (table v0.1–v0.6, central idea, change, result).
+15. **Open issues for production:** tall forest still 2–3 m short (ground too high under dense canopy); plausibility cap for
+    rare implausible tundra heights; footprint-level reference metric; NEON / Nordic validation; canopy cover on hold.
+
+**Version 3 (17 Oct 2026, v0.4–v0.5):** versions table and "Next" slide only; never fully applied (superseded by version 4).
 
 **Version 2 changes (15 Oct 2026):** title → config v0.2; slide 6 canopy-top rule → column test; slides 7–10 rebuilt with
 v0.2 results (7 Seward 44 % → 15 %, `01_segments_vs_uav.png`; 8 photon labels, `03_confusion_by_height.png`; 9 tall forest

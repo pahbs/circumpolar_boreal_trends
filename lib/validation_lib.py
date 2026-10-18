@@ -10,19 +10,47 @@ CLASS_COLORS = {"noise": "#bdbdbd", "ground": "#a6611a", "canopy": "#1b9e77", "t
                 "buffer": "#fdb863", "none": "#ffffff", "unclassified": "#d7301f"}
 ATL08_NAMES = {0: "noise", 1: "ground", 2: "canopy", 3: "top", 4: "unclassified"}
 NEW_NAMES = {0: "noise", 1: "ground", 2: "canopy", 3: "top"}
-# The three versions of 30 m segments compared throughout (all from the same ATL03 v007 photons):
-LABEL_CURRENT = "current v7 30 m (ATL08 classes → PhoREAL)"    # what our training files contain today
-LABEL_CHECK = "ATL08 classes → our 30 m (check)"                # isolates our binning from our classification
-LABEL_NEW = "reclassified photons → our 30 m (new)"           # the new product
+# 30 m segment versions compared throughout (17 Oct 2026 names). All use the same ATL03 release 007 photons; a name
+# says (1) whose photon classes and (2) who cut them into 30 m segments and computed the heights:
+#   photon classes \ binning   SlideRule PhoREAL          our segment_metrics
+#   ATL08 v007                 ATL08 · PhoREAL (today)    ATL08 · our binning (control)
+#   reclassified (config v0.N) -                          reclassified v0.N
+LABEL_CURRENT = "ATL08 · PhoREAL (today)"           # what our training files contain today
+LABEL_CHECK = "ATL08 · our binning (control)"       # same ATL08 classes, our binning: separates binning from classification
+LABEL_NEW = "reclassified"                          # + " v0.N" for a config version
 SCHEME_COLORS = {LABEL_CURRENT: "#7570b3", LABEL_CHECK: "#d95f02", LABEL_NEW: "#1b9e77"}
 # Photon classifications compared throughout:
 PHOTON_ATL08 = "ATL08 v007 photon classes"
-PHOTON_NEW = "reclassified photon classes (v0.1)"
+PHOTON_NEW = "reclassified photon classes"
 PHOTON_REF = "reference photon labels"
 
 
 def height_class_labels(edges):
     return [f"{a}-{b} m" if b < 60 else f"{a}+ m" for a, b in zip(edges[:-1], edges[1:])]
+
+
+def r_squared(est, ref):
+    """Squared Pearson correlation of estimate vs reference (finite pairs; NaN if < 3). Reported instead of r."""
+    est, ref = np.asarray(est, float), np.asarray(ref, float)
+    ok = np.isfinite(est) & np.isfinite(ref)
+    if ok.sum() < 3 or np.std(est[ok]) == 0 or np.std(ref[ok]) == 0:
+        return np.nan
+    return float(np.corrcoef(est[ok], ref[ok])[0, 1] ** 2)
+
+
+def zeros_by_height_class(est, ref, edges):
+    """Per reference height class: n, share of estimates that are exactly 0 m, and bias / RMSE of the non-zero estimates.
+    A 0 m height is right below ~1 m and wrong above ~2 m; mean bias alone rewards writing 0 m (LOG, 16 Oct 2026)."""
+    est, ref = np.asarray(est, float), np.asarray(ref, float)
+    ok = np.isfinite(est) & np.isfinite(ref)
+    cls = pd.cut(ref[ok], edges, right=False, labels=height_class_labels(edges))
+    d = pd.DataFrame({"cls": cls, "est": est[ok], "e": est[ok] - ref[ok]})
+    rows = {}
+    for c, g in d.groupby("cls", observed=False):
+        nz = g[g.est > 0]
+        rows[c] = {"n": len(g), "zero_share": (g.est == 0).mean() if len(g) else np.nan,
+                   "bias_nonzero": nz.e.mean(), "rmse_nonzero": np.sqrt((nz.e ** 2).mean()), "n_nonzero": len(nz)}
+    return pd.DataFrame(rows).T
 
 
 def metrics_by_height_class(est, ref, edges, spurious=None):
@@ -93,15 +121,15 @@ def plot_bias_by_class(tables, title, ax=None, metric="bias"):
 
 
 def plot_scatter(ax, est, ref, title, lim=None, cmap="Greys"):
-    """Density of ICESat-2 vs reference heights (log counts), 1:1 line, n / bias / RMSE / r. Square panel."""
+    """Density of ICESat-2 vs reference heights (log counts), 1:1 line, n / bias / RMSE / r². Square panel."""
     est, ref = np.asarray(est, float), np.asarray(ref, float)
     ok = np.isfinite(est) & np.isfinite(ref)
     lim = lim or max(5, np.nanpercentile(np.r_[est[ok], ref[ok]], 99.5))
     hb = ax.hexbin(ref[ok], est[ok], gridsize=40, extent=(0, lim, 0, lim), mincnt=1, bins="log", cmap=cmap, lw=0)
     ax.plot([0, lim], [0, lim], c="#d7301f", lw=0.8)
     e = est[ok] - ref[ok]
-    r = np.corrcoef(ref[ok], est[ok])[0, 1] if ok.sum() > 2 else np.nan
-    ax.text(0.03, 0.97, f"n = {ok.sum():,}\nbias = {e.mean():+.2f} m\nRMSE = {np.sqrt(np.mean(e**2)):.2f} m\nr = {r:.2f}",
+    r2 = r_squared(est[ok], ref[ok])
+    ax.text(0.03, 0.97, f"n = {ok.sum():,}\nbias = {e.mean():+.2f} m\nRMSE = {np.sqrt(np.mean(e**2)):.2f} m\nr² = {r2:.2f}",
             transform=ax.transAxes, va="top", fontsize=8, bbox=dict(fc="white", ec="none", alpha=0.8))
     ax.set_xlim(0, lim); ax.set_ylim(0, lim); ax.set_aspect("equal")
     ax.set_xlabel("reference height (m)")
@@ -133,6 +161,9 @@ def segments_all_versions(ph, cfgs, cfg, phoreal=None):
         if t != "atl08":
             cols.update({"low_signal": f"low_signal_{t}", "short_veg_flag": f"short_veg_{t}",
                          "n_canopy": f"n_canopy_{t}", "canopy_signal_photons": f"canopy_signal_{t}"})
+            # v0.4 presence test columns, where the config has them
+            cols.update({c: f"{c}_{t}" for c in ("veg_present", "veg_detectable", "veg_unmeasured", "presence_sigma",
+                                                 "ground_slope_deg") if c in f})
         base = base.merge(f[keys + list(cols)].rename(columns=cols), on=keys, how="left")
     base = gpd.GeoDataFrame(base, geometry="geometry", crs=4326)
     if phoreal is not None and len(phoreal):

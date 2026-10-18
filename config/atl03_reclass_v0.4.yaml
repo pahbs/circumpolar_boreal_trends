@@ -1,0 +1,118 @@
+# ATL03 v007 photon reclassification: all thresholds and paths.
+# Never edit a released version in place: copy to a new version file and change `version`.
+version: "0.4"
+
+# ---------------------------------------------------------------- paths
+# Each path may be local or s3://. On MAAP ADE use the `maap` profile; on ADAPT the `adapt` profile.
+profiles:
+  adapt:
+    work_dir: /explore/nobackup/people/pmontesa/atl03_reclass          # all outputs of this work
+    seward_dir: /explore/nobackup/people/pmontesa/userfs02/projects/ilab/above_shrubs/data/field/sewardpen2024
+    boreal_tiles: /explore/nobackup/people/pmontesa/atl03_reclass/ancillary/boreal_tiles_v004.gpkg
+    credentials_ini: ~/code/credentials.ini                             # [EarthData] username/password; else ~/.netrc
+  maap:                                                                 # MAAP ADE: bucket mount (DPS jobs use s3:// paths)
+    work_dir: /projects/my-private-bucket/atl03_reclass
+    seward_dir: /projects/my-private-bucket/atl03_reclass/ancillary/sewardpen2024
+    boreal_tiles: /projects/shared-buckets/montesano/databank/boreal_tiles_v004_model_ready.gpkg
+    credentials_ini: ~/credentials.ini
+
+# ---------------------------------------------------------------- ICESat-2 inputs
+icesat2:
+  release: "007"              # ATL03/ATL08 release; granules are looked up in CMR and passed to SlideRule by name
+  months: [6, 7, 8, 9]        # growing season
+  years: [2019, 2020, 2021, 2022, 2023, 2024, 2025]
+  atl03_cnf: [0, 1, 2, 3, 4]  # keep background photons: needed for the noise rate and our own noise filter
+  quality_ph: [0]             # nominal photons only
+  strong_spots: [1, 3, 5]     # ATLAS spots of the strong beams (independent of spacecraft orientation)
+  shot_spacing_m: 0.7         # along-track spacing of laser shots
+  pulse_rate_hz: 10000        # ATLAS laser pulse rate (used for partial segments at track ends)
+  footprint_diameter_m: 11.0  # v0.4: ICESat-2 footprint; sets how far ground returns spread vertically on a slope
+
+# ---------------------------------------------------------------- reference photon labels (Purslow et al. 2023, Fig. 1)
+reference_labels:
+  footprint_diameter_m: 11.0  # ICESat-2 footprint; reference DTM/CHM are summarised over this window
+  ground_halfwidth_m: 0.5     # |height above reference DTM| <= this -> ground
+  canopy_top_buffer_m: 1.0    # canopy window extends this far above the footprint CHM maximum
+  noise_buffer_m: 5.0         # photons more than this above the canopy window or below the ground window -> noise
+                              # photons between the class windows and the noise windows -> 'buffer' (excluded)
+  offset_search_m: 6.0        # horizontal geolocation offset search radius (per granule x beam)
+  offset_step_m: 2.0
+  offset_min_gain: 0.2         # v0.2: keep a horizontal shift only if it cuts the ground misfit (MAD) by >= 20 % vs no shift
+
+# ---------------------------------------------------------------- reclassifier
+reclass:
+  noise:
+    window_along_m: 10.0      # half-width of the along-track neighbourhood
+    window_vert_m: 1.5        # half-height of the vertical neighbourhood
+    k_sigma: 3.0              # signal if count >= expected_noise + k_sigma * sqrt(expected_noise)
+    min_count: 4              # and at least this many neighbours
+  ground:
+    bin_m: 10.0               # along-track bin for the lower-envelope search
+    envelope_pct: 5           # percentile of signal heights per bin used as the first ground guess
+    smooth_bins: 5            # rolling median length (bins) for the ground surface
+    halfwidth_m: 0.6          # photons within this of the surface are ground (on flat ground)
+    slope_window: true        # v0.4: ground window = halfwidth_m + footprint_diameter_m / 2 x |along-track slope|; the
+                              # canopy floor rises by the same amount. A fixed +/-0.6 m left the surface metres too low
+                              # on slopes and called the upslope ground returns canopy (LOG 17 Oct 2026)
+    n_iter: 3
+  canopy:
+    min_relief_m: 0.5         # canopy photons must be at least this far above the ground surface
+    ground_sigma_k: 2.0       # ... or k x local ground spread, whichever is larger
+    max_relief_m: 60.0
+    toc_recovery: true        # recover sparse canopy-top photons rejected by the noise filter
+    toc_max_above_m: 3.0      # within this height above the local canopy envelope
+    toc_min_neighbours: 2     # and at least this many such photons within toc_window_m along track
+    toc_window_m: 15.0
+    toc_k_sigma: 3.0          # v0.3: canopy-top neighbours must exceed the expected background by k sigma (Poisson)
+    column:                   # v0.2: column test for sparse canopy photons (lib: canopy_column_top)
+      enabled: true
+      window_along_m: 20.0    # along-track length of a column
+      k_sigma: 5.0            # Poisson significance of the photon excess over the expected background
+      min_photons: 5          # canopy photons needed in a column
+      max_gap_m: 5.0          # do not count photons across a vertical gap larger than this
+      top_rule: plateau       # v0.3: lowest height whose excess is within top_k background sigmas of the maximum
+      top_k: 1.0               # chosen on independent validation (LVIS, NEON), not on the Alaska development sites
+  short_veg:
+    min_canopy_photons: 3     # v0.4: vegetation present but fewer canopy photons than this -> NaN (veg_unmeasured)
+    min_resolvable_m: 0.6     # vegetation present but canopy RH98 below this -> 0 m
+    # min_canopy_signal_photons (v0.1-v0.3 0 m rule) is not used from v0.4: it wrote 0 m wherever canopy evidence was
+    # weak, including 6-12 % of forest >= 5 m (LOG 16 Oct 2026). Replaced by `presence`.
+    presence:                 # v0.4: one test for "is there vegetation here?" (lib: vegetation_presence)
+      k_sigma: 3.0            # photon excess above the ground (all photons, any class) vs solar background, Poisson
+      min_cover: 0.25         # 0 m only if a canopy covering this share of the footprint would have been seen ...
+      min_ratio: 0.5          # ... with this canopy/ground reflectance ratio (conservative: dark canopy, bright ground)
+      layer_m: 5.0            # ... above the background of the lowest layer_m above the canopy floor (shrub layer)
+                              # min_cover, min_ratio, layer_m fixed a priori, not tuned on any site
+    low_signal:               # v0.2: too little signal to tell bare ground from canopy -> h_canopy NaN, low_signal flag
+      min_signal_photons: 15  # background-corrected ground + canopy photons per 30 m segment; scaled from ATL08's
+                              # minimum of ~50 signal photons per 100 m segment (verify against the ATL08 ATBD)
+
+# ---------------------------------------------------------------- 30 m segments
+segments:
+  length_m: 30.0
+  min_photons: 5              # signal photons needed to report a segment
+  shots_from_length: true     # v0.2: shots per segment = length / shot spacing (v0.1 counted only shots with returns)
+  rh_percentiles: [25, 50, 60, 70, 75, 80, 85, 90, 95, 98, 100]
+  phoreal:                    # settings that reproduce our current v7 files (process_atl08_boreal.py)
+    binsize: 1.0
+    geoloc: center
+    above_classifier: true
+    use_abs_h: false
+    send_waveform: false
+
+# ---------------------------------------------------------------- canopy cover (Purslow et al. 2023, Sec. 2.2-2.3.2)
+cover:
+  min_rate_per_shot: 0.25     # tracks need Ev(cv=100%) and Eg(cv=0%) above this
+  min_segments_per_track: 10
+  weight: r2                  # each track's contribution to the shared slope is weighted by Pearson r^2
+  fallback_ratio: 1.0         # rho_v/rho_g when a site fit fails (documented per site)
+  als_height_thresholds_m: [0.5, 1.37, 2.0]
+
+# ---------------------------------------------------------------- validation
+validation:
+  height_classes_m: [0, 1, 2, 5, 10, 15, 20, 60]
+  spurious_veg: {ref_below_m: 1.0, est_above_m: 2.0}
+  als_reference_percentile: 98
+  segment_footprint_width_m: 11.0
+  disturbance:
+    hansen_version: GFC-2024-v1.12   # loss year after the ALS year -> excluded

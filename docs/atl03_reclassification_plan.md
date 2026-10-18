@@ -1,6 +1,6 @@
 # Reclassifying ICESat-2 v7 ATL03 photons to build better 30 m vegetation heights and canopy cover
 
-**Status:** v0.1 implemented, first runs on ADAPT (Oct 2026); see `atl03_reclassification_LOG.md` · **Drafted:** 14 Oct 2026 · **Owner:** Paul Montesano
+**Status:** v0.6 final for training (18 Oct 2026; versions v0.1–v0.6 in the LOG and methods §8); see `atl03_reclassification_LOG.md` · **Drafted:** 14 Oct 2026 · **Owner:** Paul Montesano
 
 ## 1. Why
 
@@ -21,12 +21,15 @@ A filter on the training data, such as Cook's distance (Zhang & Liu 2023), can o
 |---|---|
 | **ATL03 v007 photons** | Every photon ICESat-2 recorded (signal and background), unclassified |
 | **ATL08 v007 photon classes** | NASA's noise / ground / canopy / top-of-canopy labels on those photons |
-| **Reclassified photon classes (v0.1)** | Our labels on the same photons (`lib/icesat2_photon_lib.py: reclassify`, `config/atl03_reclass_v0.1.yaml`) |
+| **Reclassified photon classes** | Our labels on the same photons (`lib/icesat2_photon_lib.py: reclassify`, one config version `config/atl03_reclass_v0.N.yaml`) |
 | **Reference photon labels** | Labels from G-LiHT or UAV DTM + CHM (the truth) |
-| **current v7 30 m (ATL08 classes → PhoREAL)** | 30 m segments from the ATL08 classes via SlideRule PhoREAL: our training files today |
-| **ATL08 classes → our 30 m (check)** | Our binning of the ATL08 classes: separates binning from classification |
-| **reclassified photons → our 30 m (new)** | Our binning of the reclassified classes: the new product |
+| **ATL08 · PhoREAL (today)** | ATL08 v007 photon classes cut into 30 m segments by SlideRule PhoREAL: our training files today (formerly "current v7 30 m") |
+| **ATL08 · our binning (control)** | The same ATL08 classes in our 30 m segments: separates binning from classification (formerly "ATL08 classes → our 30 m (check)") |
+| **reclassified v0.N** | Our photon classes (config v0.N) in our 30 m segments: the candidate product (formerly "reclassified photons → our 30 m (new)") |
 | **Reference height** | 98th percentile of the 1 m reference CHM inside a segment's 30 m × 11 m footprint |
+
+A segment name says whose photon classes, then who binned them; all use ATL03/ATL08 release 007 ("v7" is the data release,
+not one of our versions). Methods, Terms, explains the naming in full.
 
 ## Generality (standing rule)
 The goal is to run this approach on **all circumpolar tiles for every year**, not just the Alaskan development sites. Every

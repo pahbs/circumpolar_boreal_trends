@@ -13,7 +13,47 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (16 Oct 2026):** v0.3 short-vegetation gains are mostly zeros (entry 16 Oct, "Correction"); v0.4 = the 0 m rule.
+**Status (18 Oct 2026): final.** **v0.6 is the version to train the biomass maps with** (entries 18 Oct). Against
+CanElevation (independent discrete-return lidar, the reference that counts most), same segments, today → v0.6: false shrubs
+over bare ground 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+ forest −4.7 → −2.9 m, r² 0.73 → 0.77, RMSE 3.87 →
+3.65 m, forest called bare 1 → 5 %, coverage 94 → 51 % (acceptable: the multi-year models have surplus samples). Development
+sites agree (G-LiHT false shrubs 30 → 10 %, 20 m+ −6.7 → −3.5 m, r² 0.39 → 0.56; Seward drone bias +1.5 → 0.0 m, false shrubs
+39 → 7 %). LVIS counts for less (waveform noise floor). v0.4 is within 0.2–0.3 m of v0.6 in CanElevation tall forest and
+v0.6 is better on short vegetation everywhere. All notebooks (00–11), methods, deck and figures describe v0.6.
+
+**Open issues for production (not blocking):**
+1. Tall forest still 2–3 m short against canopy-height-model lidar; the ground sits > 1 m too high under a fifth to a third
+   of 15 m+ segments in every version (dense canopy, ≤ 2 ground photons per 10 m bin).
+2. Rare implausible heights over tundra (one segment at 38 m over < 2 m Seward tundra; LVIS 0–1 m non-zero heights +9 m):
+   add a plausibility cap before production.
+3. Reference metric: footprint-level vs segment RH98 (40 % of G-LiHT "false vegetation" has trees in some footprints).
+4. Wider validation before scale-out (NEON, Nordic ALS); canopy cover on hold.
+
+**Earlier status (17 Oct 2026, 21:45):** v0.5 results mixed (short vegetation better, tall forest ~0.5 m shorter on CanElevation).
+
+**Earlier status (17 Oct 2026):** v0.4 built and validated on independent data; not adopted for training (r² on LVIS fell
+0.51 → 0.46, coverage 51–52 %).
+
+## Versions at a glance (newest first): the central idea of each version
+
+Each version changes **one idea**, chosen from the largest error left by the previous version. Full rule definitions:
+methods §8; evidence: the dated entries below.
+
+| Version | Central idea (why it was made) | What changed | Result | Status |
+|---|---|---|---|---|
+| **v0.6** (18 Oct) | **v0.5's ground, without losing sparse ground under dense canopy.** v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m. | `ground.dense_min_photons` 3 → 1 (fraction test only). | CanElevation r² 0.770 (v0.4 0.775, v0.5 0.760), false vegetation 4.4 %, 20 m+ −2.93 m (v0.4 −2.67, v0.5 −3.29); G-LiHT r² 0.575; Seward bias 0.0 m. | **final, for training** |
+| v0.5 (17 Oct) | **Put the ground where the photons are.** In v0.4's false heights over bare ground (G-LiHT ALS < 1 m, v0.4 > 0 m) the ground was > 1 m off in 30 % and ground photons were called canopy in 25 %; photons below the surface (after-pulses under bright or specular surfaces, daytime clusters) pulled the lower envelope down. | First ground guess per 10 m bin = lowest layer (2 × 0.6 m) with ≥ half the densest layer's photons (`ground.start: lowest_dense_layer`), not the 5th percentile of signal photons. | Development sites (harness): r² 0.51 → 0.55, false vegetation 16 → 13 %, tall forest 0.1–0.2 m lower. Independent: short vegetation better everywhere, tall forest ~0.5 m shorter on CanElevation. | replaced by v0.6 |
+| **v0.4** (17 Oct) | **Tell bare ground from vegetation correctly.** v0.3's short-vegetation gains came from writing 0 m, also over real forest; and on slopes the ground was found metres too low, so ground photons became "canopy". | (A) ground window widens with along-track slope (± 0.6 m + 5.5 m × slope); (B) one presence test on all photons above the ground (3σ over solar background) + "would a 25 %-cover canopy have been seen?" decide height / 0 m / NaN. Old 0 m rule removed. | Independent (LVIS + CanElevation): forest at 0 m 6.2 → 2.8 %, false vegetation 7.2 → 6.3 % (today 16 %), big gains on slopes; CanElevation best on every measure but coverage; LVIS r² 0.51 → 0.46 and RMSE up (heights of newly detected short vegetation unreliable); coverage 62–64 → 51–52 % (today 88–95 %). | tested; not adopted for training; leads to v0.5 |
+| v0.3 (15–16 Oct) | **Stop solar noise from inventing tall canopy tops.** > 30 m "canopy" over tundra in bright daylight. | Canopy-top recovery needs 3σ over background; column-test top = plateau, not maximum. | LVIS: spurious vegetation 47 → 12 %, tall forest nearly unbiased. **But** short-vegetation gains were mostly zeros, and 6–12 % of forest ≥ 5 m was 0 m (16 Oct). | replaced by v0.4 |
+| v0.2 (15 Oct) | **Keep sparse tall-canopy photons, and say "no data" instead of 0 m when the signal is too weak.** v0.1 lost tall-forest canopy and wrote 0 m for 61–66 % of segments. | Canopy column test; `low_signal` NaN flag; shots from segment length; track shifts only when they help. | Tall forest back to (and in most cells better than) today; short vegetation no better. | replaced by v0.3 |
+| v0.1 (14 Oct) | **Rebuild ground and canopy labels from all ATL03 photons**, with instrument-based thresholds instead of ATL08's classes. ATL08 classes give spurious shrub heights and underestimate tall canopy. | Noise filter, iterative ground, canopy classes, short-vegetation guard. | Seward spurious vegetation 50 → 12 %; tall forest much worse (canopy photons lost). | replaced by v0.2 |
+
+**Names used for the 30 m versions** (from 17 Oct; methods, Terms): **ATL08 · PhoREAL (today)** = NASA's ATL08 photon classes
+binned by SlideRule PhoREAL, our training data today (formerly "current v7 30 m"); **ATL08 · our binning (control)** = the
+same classes binned by our code, to separate binning from classification (formerly "check"); **reclassified v0.N** = our
+photon classes, our binning (formerly "new"). Entries before 17 Oct use the former names.
+
+**Earlier status (16 Oct 2026):** v0.3 short-vegetation gains are mostly zeros (entry 16 Oct, "Correction"); v0.4 = the 0 m rule.
 **Earlier status (15 Oct 2026, night):** v0.2 committed (`c8efd09`) and in the deck. **v0.3 in progress**
 (`config/atl03_reclass_v0.3.yaml`): noise-robust canopy top (diagnosed from impossible > 30 m tundra heights); independent
 LVIS 2019 validation done (notebook 09: false vegetation 47 % → 12 %, tall forest nearly unbiased, coverage ~62 %);
@@ -45,6 +85,254 @@ NEON needs an API token (Paul to create). Canopy cover on hold.
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-18 · Ground vs lidar DTM by canopy height (G-LiHT, CanElevation); v0.6 drops v0.5's 3-photon minimum
+
+**Question (Paul Montesano):** is v0.5's tall-forest loss on CanElevation caused by the ground? Our ground surface (height −
+relief at every photon, median per 30 m segment) minus the lidar DTM (11 m footprint mean), by lidar canopy height class.
+CanElevation DTMs are orthometric: each box is shifted by the median v0.4 error over its bare segments (41 boxes with ≥ 5 bare
+segments, 13,225 segments).
+
+| CanElevation, lidar RH98 | v0.4 median / > 1 m too high | v0.5 median / > 1 m too high | v0.5 ground > 1 m above v0.4 |
+|---|---|---|---|
+| 0–1 m | 0.00 / 1 % | 0.00 / 1 % | 2 % |
+| 5–10 m | +0.04 / 8 % | +0.06 / 10 % | 5 % |
+| 10–15 m | +0.06 / 14 % | +0.10 / 17 % | 8 % |
+| 15–20 m | +0.16 / 22 % | +0.17 / 23 % | 12 % |
+| 20 m + | +0.23 / 30 % | +0.34 / 33 % | 15 % |
+
+G-LiHT shows the same pattern, smaller (tall forest: median +0.08–0.10 → +0.11–0.13 m; > 0.5 m too high 19–26 → 21–27 %).
+**Findings:** (1) in **every** version the ground sits too high under tall forest (a fifth to a third of 15 m+ segments by
+> 1 m), part of the long-standing tall-forest underestimate; (2) v0.5 makes it worse in a tail: the v0.5 − v0.4 height
+difference on CanElevation is < 0.1 m for 64 % of 15 m+ segments, but 8 % drop by > 2 m.
+
+**Cause and fix.** Not the fraction: `dense_frac` 0.5, 0.25, 0.15 give the same CanElevation heights (20 m+ −3.34, −3.31,
+−3.31 m). It is v0.5's extra minimum of 3 photons per layer: under dense canopy a 10 m bin often has only 1–2 ground photons,
+so v0.5 started on a canopy layer. With no minimum (fraction test only), CanElevation, 6,809 common segments:
+
+| | today | v0.4 | v0.5 | no minimum (v0.6) |
+|---|---|---|---|---|
+| bias 15–20 / 20 m+ (m) | −3.65 / −4.74 | −1.95 / −2.67 | −2.43 / −3.29 | −2.16 / −2.93 |
+| r² / RMSE (m) | 0.728 / 3.87 | 0.775 / 3.61 | 0.760 / 3.72 | 0.770 / 3.65 |
+| false vegetation | 14.4 % | 5.0 % | 4.3 % | 4.4 % |
+
+G-LiHT harness: r² 0.553 (v0.4 0.514, v0.5 0.548), false vegetation 13.1 % (16.0, 13.0). **v0.6 = v0.5 with
+`ground.dense_min_photons: 1`.** This setting was chosen with CanElevation in view (it is reported as such; methods §7). Known
+limit (synthetic test): with ≤ ~2 ground photons per bin under very dense canopy every density-based first guess starts on a
+canopy layer, where v0.4's envelope does better; that is the remaining ~0.25 m tall-forest gap to v0.4 on CanElevation.
+Tests: `test_v06_sparse_ground_under_dense_canopy`, `test_v06_keeps_v05_afterpulse_fix`. Run `runs/v0.6/` started 22:08.
+
+## 2026-10-17 · v0.5 results: mixed; better short vegetation everywhere, tall forest ~0.5 m shorter on CanElevation
+
+Run `runs/v0.5/` (all rc = 0, 17:20–20:45). Common segments of today, v0.4 and v0.5 per reference (`summary_all_references.csv`):
+
+| reference | r² v0.4 → v0.5 | RMSE (m) | false vegetation | bias < 2 m (m) | bias ≥ 10 m (m) |
+|---|---|---|---|---|---|
+| CanElevation | 0.772 → 0.758 | 3.63 → 3.75 | 5.0 → 4.3 % | +0.35 → +0.30 | −2.23 → −2.62 |
+| G-LiHT (dev) | 0.544 → 0.587 | 5.20 → 4.89 | 12.8 → 10.4 % | +1.22 → +0.87 | −2.69 → −2.81 |
+| LVIS (low weight) | 0.463 → 0.467 | 6.02 → 5.92 | 6.4 → 5.6 % | +0.86 → +0.73 | +2.22 → +2.04 |
+| Seward UAV (dev) | 0.157 → 0.136 | 2.72 → 2.70 | 9.8 → 7.4 % | +0.25 → +0.04 | — |
+| Seward field (dev) | 0.035 → 0.019 | 3.85 → 3.91 | 6.2 → 6.2 % | −0.03 → −0.11 | — |
+
+**Reading:** v0.5 lowers heights everywhere by ~0.1–0.6 m. Short vegetation and false vegetation improve at every
+reference. On CanElevation (discrete-return, independent, the reference that counts most) tall forest gets shorter:
+15–20 m −1.95 → −2.44 m, 20+ m −2.76 → −3.34 m, so r² and RMSE are slightly worse than v0.4 (still better than today:
+−3.67 / −4.76 m). Likely cause: under dense canopy the lowest dense layer can be understory or lower canopy, so the
+ground sits too high. Not adopted yet; next check the v0.5 ground vs the ALS DTM by canopy height on G-LiHT and CanElevation.
+Coverage 50–64 % (not a target).
+
+## 2026-10-17 · v0.5: the planned height rule does not help; ground placement instead (Paul Montesano's choice)
+
+**Planned idea tested first (development sites, G-LiHT, 869 segments where v0.4 reports > 0 m):** four rules for "height
+from the photons that make the excess significant" (presence-test peak, background-corrected RH95 / RH98, plateau of the
+cumulative excess with k = 1 or 2). None fixes the false heights: best (plateau, k = 2) moves the 0–1 m class median error
++5.2 → +4.2 m and makes 10 m+ forest 0.4–1.3 m more negative; cumulative-excess rules overshoot (background is
+overestimated by day: observed / expected photons 25–45 m above ground = 0.65). Dropped.
+
+**Diagnosis of the 113 segments with ALS RH98 < 1 m and v0.4 > 0 m** (photon-level reference labels and ALS DTM):
+30 % our ground > 1 m off (mostly too low, slopes ~6–9°); 25 % ground right but ground / near-ground photons above the
+canopy floor called canopy; 40 % reference canopy inside some photon footprints although the segment RH98 is < 1 m (a
+reference-metric effect, not an ICESat-2 error); 5 % noise. Night strong beams show the same +5 m median error as day, so
+solar noise is not the main cause. Profiles (16 segments) show the ground pulled below a bright flat surface by photons
+~2 m under it, and ground lost and interpolated metres below the photons.
+
+**v0.5 (one idea, config `atl03_reclass_v0.5.yaml`, lib `lowest_dense_layer`):** the first ground guess per 10 m bin is the
+lowest layer 2 × halfwidth_m thick holding at least half the photons of the bin's densest layer, instead of the 5th
+percentile of signal photons; iterations unchanged. `dense_frac` = 0.5 fixed a priori; 0.25 gives nearly the same result.
+Harness (2.75 M photons around the 2,719 G-LiHT segments, reproduces v0.4: coverage 55.6 vs 55.7 %):
+
+| G-LiHT development sites | v0.4 | v0.5 |
+|---|---|---|
+| r² / RMSE (m) | 0.514 / 5.47 | 0.548 / 5.18 |
+| false vegetation (ALS < 1 m, est. > 2 m) | 16.0 % | 13.0 % |
+| forest ≥ 5 m at 0 m | 8.1 % | 8.7 % |
+| coverage | 55.6 % | 54.8 % |
+| bias 10–15 / 20+ m (m) | −2.34 / −2.92 | −2.47 / −3.13 |
+
+Not taken: less ground smoothing (3 bins instead of 5) scored better (r² 0.58, false vegetation 11 %) but is a setting tuned
+on Alaska. Ground error vs the ALS DTM (> 1 m in 12–13 % of segments; 36–40 % on slopes > 10°) did not change with any
+variant: on slopes most of it is co-registration between ALS and photons (in 114 of 353 such segments no signal photon lies
+within 1 m of the DTM). Tests: `test_v05_ground_not_pulled_down_by_afterpulses`, `test_v05_forest_height_kept`.
+
+**LVIS weight (Paul Montesano):** LVIS is a waveform lidar whose noise floor is probably 0.5–1.0 m (to verify); report it,
+weigh it less than discrete-return lidar and the drone transects, and do not tune or reject versions mainly on it.
+
+**Seward field (2 m) added as a fifth reference** (Paul Montesano): `field_max_200` from notebook 01 (tallest field
+height within 2 m of each field point inside the segment, max over the points; 182 segments, median 1.24 m). Notebook 11
+tables and figures and the validation map (1,140 field points) include it. On v0.4 (103 common segments): bias today
++1.01 → v0.4 −0.20 m, false vegetation 28 → 7 %, but RMSE 2.0 → 4.0 m and r² 0.27 → 0.03: a few segments with heights far
+too tall (the v0.5 target), and a point survey samples a 30 m segment sparsely.
+
+**Run:** `runs/v0.5/run_logs/` (01–05 first, then 09, 10 comparing v0.4 and v0.5, then 11). Notebook 11 now loads every
+version through the run-folder chain and adds a map of all references and the development / production test tiles.
+
+## 2026-10-17 · v0.4 development-site notebooks (01–05) and notebook 11: all validation results together
+
+**Runs:** 01–05 at v0.4 (11:36–14:11, all rc = 0; 02 rerun at v0.4 so the run folder is self-contained). v0.3 was never run
+on the development sites, so here v0.4 is compared with v0.2 and today. Notebook 11 (common segments of today, v0.2, v0.3,
+v0.4 per reference; no control):
+
+| | today | v0.2 | v0.4 |
+|---|---|---|---|
+| G-LiHT (1,423): false vegetation | 31 % | 27.5 % | **13.6 %** |
+| G-LiHT: bias < 2 m / ≥ 10 m (m) | +2.37 / −3.97 | +2.37 / **−2.65** | **+1.24** / −2.79 |
+| G-LiHT: r² / RMSE (m) | 0.40 / 5.85 | 0.44 / 5.88 | **0.54 / 5.21** |
+| G-LiHT: forest at 0 m / coverage | **1.2 %** / **87 %** | 11.0 % / 65 % | 8.1 % / 56 % |
+| Seward (225): false vegetation / bias < 2 m | 43 % / +1.87 | 26 % / +1.17 | **12.5 % / +0.36** |
+
+G-LiHT 2–10 m vegetation is ~1 m lower than in v0.2 (5–10 m: −1.18 → −2.02 m), consistent with the wider ground window on
+slopes taking in low canopy (17 Oct diagnosis); to watch in v0.5.
+
+**Notebook 11** (`11_validation_summary_for_presentation.ipynb`, for readers outside ICESat-2): five figure sets, each
+under a plain-language lede: bias by height class (4 references), false vegetation and forest called bare, scatter today vs
+v0.4, r² by light × beam, coverage; a bottom-line table; appendices on binning (control) and slope. Figures in
+`runs/v0.4/figures/11_*.png` and `docs/figures/`. Colours: today gray, versions one blue ramp (darkest = latest), checked
+with the dataviz palette rules (ported validator: normal-vision ΔE ≥ 15.6, CVD ΔE ≥ 14.6).
+
+## 2026-10-17 · v0.4 independent validation (LVIS 2019, CanElevation): mixed; fewer wrong zeros and false vegetation, less coverage
+
+Notebooks 09 and 10 at v0.4 (v0.3 vs v0.4, run 17 Oct 10:57–11:36). Common segments = every compared version reports a
+height. Notebook 09/10 tables include the control; notebook 11 does not (it keeps bare segments with no ATL08 canopy
+photons, where the control has no height), so its n is larger (LVIS 17,218 vs 13,136) and some numbers differ.
+
+**Both references pooled** (notebook 11 definition, 24,215 common segments, today / v0.3 / v0.4):
+
+| | today | v0.3 | v0.4 |
+|---|---|---|---|
+| false vegetation (ref < 1 m, ICESat-2 > 2 m) | 16 % | 7.2 % | **6.3 %** |
+| forest ≥ 5 m written as 0 m | **0.7 %** | 6.2 % | 2.8 % |
+| bias, ref < 2 m / ref ≥ 10 m (m) | +1.20 / −1.42 | **+0.65** / **+0.24** | +0.72 / +0.44 |
+| r² / RMSE (m) | 0.49 / **4.95** | **0.56** / 4.96 | 0.52 / 5.45 |
+| coverage, LVIS / CanElevation | **88 / 95 %** | 62 / 64 % | 51 / 52 % |
+
+- **CanElevation (CHM reference, like G-LiHT): v0.4 is the best version on every measure except coverage**: bias 0–1 m
+  +0.40 → +0.37, 1–2 m +1.36 → +0.63 m; false vegetation 6.6 → 5.4 %; forest at 0 m 7.7 → 4.8 %; r² 0.75 → 0.76; RMSE
+  3.83 → 3.73 m; 20+ m bias −2.9 m (today −4.9). Tall-forest criterion: 19 of 24 cells as written (v0.3 19), 20 of 24
+  restated (v0.3 18). Night weak-beam r² 0.52 → 0.62 (today 0.73).
+- **LVIS: v0.4 trades.** Better: false vegetation 7.6 → 6.8 %, forest at 0 m 5.5 → 2.0 %, 1–2 m bias +2.03 → +1.60, 2–5 m
+  +2.21 → +2.06 m, weak-beam r² (day 0.26 → 0.34, night 0.60 → 0.64), and slopes (1–5 m vegetation on slopes > 20°:
+  +6.8 → −0.2 m; forest > 20°: +3.5 → +1.4 m). Worse: r² 0.51 → 0.46, RMSE 5.36 → 6.01 m, 0–1 m bias +0.26 → +0.62 m, and
+  tall forest more positive (+1.0 → +1.8 m at 20+ m), partly because removing wrong zeros raises the mean (non-zero
+  heights alone improved slightly, 10–15 m +2.60 → +2.35 m).
+- **Why LVIS RMSE rose:** 1,058 segments that v0.3 wrote as 0 m now get a height in v0.4; their squared error rises from
+  29.7k to 178.8k m² (RMS ~13 m). Presence is usually right (median reference 2 m, median v0.4 2 m) but 28 % of those
+  heights are > 5 m and 24 % sit over bare ground: **the height is taken as RH98 of all canopy photons, which daytime noise
+  inflates over short, sparse vegetation.** Segments v0.3 had as a height and v0.4 sets to 0 m improve (18.8k → 4.5k).
+- **Coverage, why it fell 11 points:** of the segments v0.3 reported and v0.4 does not (LVIS 4,203; CanElevation 1,694),
+  82–88 % were v0.3 zeros; 58 % (LVIS) / 73 % (CanElevation) are bare ground (those zeros were right), the rest vegetated
+  (wrong zeros); 54–64 % are daytime weak-beam segments whose few photons cannot show that no 25 %-cover canopy is present.
+  Loss by class (LVIS): 0–1 m 70 → 50 %, 1–2 m 63 → 49 %, 10+ m 53 → 51 %.
+- One CanElevation box (`NL-Churchill_2019-1m_0`, 82 photons) gives no segment in any version (as in the v0.3 run).
+- **Bug found and fixed during the run:** the vectorised segment table (16 Oct) failed (`KeyError 'rh98'`) when a track
+  has no canopy photon at all (control binning of bare tundra, LVIS `…R2003_066755`, 922 segments). Fixed in
+  `_segments_table`; 09 restarted. The v0.3 run (per-segment loop) was not affected.
+
+**Reading:** v0.4 does what it was built for, against data never used to design it: far fewer forest segments written as
+bare (5–8 % → 2–5 %) and fewer false heights, especially on slopes. It does not improve agreement overall on LVIS, because
+(a) the height of newly detected short vegetation is unreliable and (b) it gives up coverage on weak daytime beams. Not
+adopted for training yet. **v0.5 (one idea): measure the height of detected vegetation from the photons that make the
+excess significant** (`presence_top_m`, the height where the presence test peaks, already computed), instead of RH98 of
+all canopy photons; to be designed and checked on the development sites first, then judged once on LVIS / CanElevation.
+
+## 2026-10-17 · Names: what each 30 m version is, and why some tables have no v0.1 (Paul Montesano's question)
+
+**Question:** what is the difference between "ATL08 classes → our 30 m (check)" and "current v7 30 m", and why is there no v0.1?
+
+**Answer.** Every 30 m height is made in two steps: label the photons (ground / canopy / noise), then cut them into 30 m
+segments and compute heights (binning). "Current v7 30 m" and "check" use the **same photon labels** (NASA's ATL08 v007
+classes); they differ only in the binning: SlideRule PhoREAL (as in our training files) vs our own code. The check exists only to
+show how much of any difference between today's heights and ours comes from binning rather than from our photon classes. "v7"
+was confusing because it is the NASA data release (007), which **every** version uses, and sounds like one of our versions.
+v0.1 is not missing by mistake: it appears in the 14–15 Oct G-LiHT and Seward results, and was replaced by v0.2 (it lost tall
+forest, −14 m above 20 m) before the independent validations existed, so those compare v0.2/v0.3 (and from now on v0.3/v0.4).
+
+**New names** (lib `validation_lib.LABEL_*`, notebooks 01–10, methods, plan): a name says whose photon classes, then who binned:
+
+| | binned by SlideRule PhoREAL | binned by our code |
+|---|---|---|
+| ATL08 v007 photon classes | **ATL08 · PhoREAL (today)** | **ATL08 · our binning (control)** |
+| our reclassified photon classes | (not made) | **reclassified v0.N** |
+
+**Also changed (Paul Montesano, 17 Oct):** every validation table and scatter plot reports **r²** instead of r
+(`validation_lib.r_squared`; notebooks 05, 06, 09, 10). Correlation values in entries before 17 Oct are r.
+
+## 2026-10-17 · v0.4: tell bare ground from vegetation correctly (slope-aware ground + one presence test)
+
+**Why a v0.4.** The 16 Oct review showed v0.3's short-vegetation gains came from writing 0 m, and 6–12 % of forest ≥ 5 m was
+wrongly 0 m. Before changing the rule, its failure was diagnosed **on the development sites only** (G-LiHT tiles, Seward;
+26,324 v0.3 segments, 3,153 with a reference height), so LVIS and CanElevation stay independent for judging the result.
+
+**Diagnosis 1 · false zeros.** Forest segments set to 0 m have ~2 canopy photons and 21–24 ground photons; the rule
+"< 3 canopy photons or < 5 after background correction → 0 m" treated weak evidence as absence. Interior: 21 % of forest
+≥ 15 m and 28 % of 5–10 m at 0 m. Zeros by reference class (all regions): 45 % (0–1 m), 37 % (1–2), 24 % (2–5), 18 % (5–10),
+8 % (10–15), 4 % (15+).
+
+**Diagnosis 2 · false vegetation on slopes.** A prototype presence test (all photons above the ground vs the background,
+Poisson) found a strong excess (median 11σ, by night as by day) on 42 % of bare G-LiHT segments (cover 0, RH98 0.2 m), peaking
+3.5–7 m above our ground. By along-track slope, bare segments testing "vegetated": 27 % (0–5°), 77 % (5–10°), 96 % (10–20°),
+91 % (> 20°). On sloped bare Kenai segments our ground surface sat a median **2.7 m below the G-LiHT ground**, and the
+photons 1–8 m above it were mostly reference ground / buffer photons. Cause: with a fixed ±0.6 m ground window, the first
+guess (5th percentile per 10 m bin) sits at the downhill end of each bin and the upslope ground returns of the 11 m footprint
+never enter the window. ATL08 has the same known weakness on steep terrain.
+
+**What v0.4 changes (one idea: is there vegetation above a correctly found ground?)**
+- **(A) Slope-aware ground.** Ground window = ±(0.6 m + 11 m / 2 × along-track slope), the vertical spread an 11 m
+  footprint has on that slope; the canopy floor rises by the same amount (unchanged on flat ground). Instrument geometry
+  only; across-track slope is not known from one beam.
+- **(B) One presence test.** For each segment, all photons (any class) between the canopy floor and 60 m are compared with
+  the solar background expected at each height (Poisson); vegetation is present if the maximum excess is ≥ 3σ. A 0 m height
+  is written only if, in addition, a canopy covering 25 % of the footprint with reflectance ratio 0.5 would have produced a
+  ≥ 3σ excess in the lowest 5 m; otherwise NaN. Present but < 3 canopy photons → NaN (`veg_unmeasured`). The < 3 / < 5
+  canopy-photon 0 m rule is removed. 25 %, 0.5 and 5 m were fixed beforehand (ρ = 0.5 at the dark-canopy end of published
+  ratios), not tuned on any site.
+
+**Synthetic tests** (`tests/`, 12 pass): bare 20° slope → < 10 % of segments > 2 m; open 18 m canopy at 25 % cover under
+1 MHz background → < 5 % at 0 m (v0.3: 20 %); bare flat ground → > 80 % at 0 m. At 15 % cover (below the design cover)
+zeros fall 75 → 21 % by day and 39 → 5 % at 0.2 MHz.
+
+**Development sites, v0.3 → v0.4** (all reported segments, per reference RH98 class):
+
+| | 0–1 m | 1–2 m | 2–5 m | 5–10 m | 10–15 m | 15+ m |
+|---|---|---|---|---|---|---|
+| share at 0 m, v0.3 | 45 % | 37 % | 24 % | 18 % | 8 % | 4 % |
+| share at 0 m, v0.4 | 44 % | 33 % | 21 % | **9 %** | **2 %** | **1 %** |
+| coverage, v0.3 → v0.4 | 71 → 56 % | 75 → 66 % | 71 → 63 % | 59 → 48 % | 63 → 58 % | 61 → 58 % |
+| non-zero bias, v0.3 → v0.4 (m) | +6.4 → +6.5 | +4.0 → +3.6 | +1.6 → +0.7 | +0.3 → −1.0 | −1.6 → −2.1 | −2.6 → −2.7 |
+
+- **Spurious vegetation** (reference < 1 m, ICESat-2 > 2 m): 28 % → **16 %**; slopes 5–10°: 45 → 23 %; > 10°: 71 → 12 %.
+- **Per region:** forest ≥ 5 m at 0 m falls in every region (Interior 5–10 m 29 → 14 %, 15+ m 22 → 9 %; Kenai 7 → 4 %,
+  3 → 1 %). Common-segment bias in tall forest: Kenai 15+ m −3.05 → −2.61 m, Interior 15+ m −7.59 → −7.27 m; 10–15 m slightly
+  more negative (Kenai −2.12 → −2.33, Interior −2.61 → −2.81 m).
+- **Coverage:** the lost coverage is mostly the former wrong zeros, now NaN ("vegetation not detectable", 6 % of 5–10 m;
+  "vegetation seen, < 3 canopy photons", 1–3 %). The largest NaN reason is unchanged: "too little signal" (30–43 % of
+  segments per class; 60–67 % of weak-beam segments).
+- **Not fixed (v0.5):** where vegetation is reported over bare flat ground, heights are still +6.5 m (mean; +4.0 m median).
+  27 % of flat bare segments show a significant excess above our ground, peaking 1.7–2.6 m above it.
+- Interior 5–10 m non-zero heights moved from −0.6 to −2.7 m: the wider window on slopes raises the canopy floor and can
+  pull low canopy into the ground; watch in the independent results.
+
+**Runs:** `runs/v0.4/`; notebooks 09, 10 (v0.3 vs v0.4), then 01–05 (development sites) at v0.4, one runner with a lock file
+(`runs/v0.4/run_logs/`). Diagnosis scripts and tables: session scratch (`v04diag/`), summarised here.
 
 ## 2026-10-16 · Correction: v0.3's short-vegetation "gains" are mostly zeros (Paul Montesano's review)
 
