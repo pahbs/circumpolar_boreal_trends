@@ -22,13 +22,14 @@ import matplotlib.pyplot as plt
 import validation_lib as val
 
 TODAY, CONTROL = "today", "control"
-LATEST = "v0.6"
-VERSIONS = [TODAY, "v0.2", "v0.3", "v0.4", "v0.5", "v0.6"]  # shown in the main figures
-COLORS = {TODAY: "#898781", "v0.2": "#bcd7f7", "v0.3": "#86b6ef", "v0.4": "#4f93e3", "v0.5": "#2a6bc2", "v0.6": "#123c74",
-          CONTROL: "#c3c2b7"}
+LATEST = "v0.7"
+VERSIONS = [TODAY, "v0.2", "v0.3", "v0.4", "v0.5", "v0.6", "v0.7"]  # shown in the main figures
+COLORS = {TODAY: "#898781", "v0.2": "#cfe1f9", "v0.3": "#a4c8f2", "v0.4": "#6fa6e8", "v0.5": "#3d82d6", "v0.6": "#225fae",
+          "v0.7": "#0f3366", CONTROL: "#c3c2b7"}
 LABELS = {TODAY: "Today: ATL08 · PhoREAL", CONTROL: "Control: ATL08 · our binning", "v0.2": "Reclassified v0.2",
           "v0.3": "Reclassified v0.3", "v0.4": "Reclassified v0.4", "v0.5": "Reclassified v0.5",
-          "v0.6": "Reclassified v0.6 (final)"}
+          "v0.6": "Reclassified v0.6", "v0.7": "Reclassified v0.7 (latest)"}
+CE_WEST = {"YT", "NWT", "BC", "AB", "NRCAN"}   # CanElevation boxes used to design v0.7; the others are its independent test
 REFS = ["LVIS 2019", "CanElevation lidar", "G-LiHT lidar", "Seward UAV", "Seward field (2 m)"]
 INDEPENDENT = {"LVIS 2019": True, "CanElevation lidar": True, "G-LiHT lidar": False, "Seward UAV": False, "Seward field (2 m)": False}
 REF_NOTE = {"LVIS 2019": "airborne waveform lidar · Alaska + W Canada · independent",
@@ -51,6 +52,27 @@ def _vcol(v):
     return "h_canopy_" + v.replace(".", "")
 
 
+def _add_disturbance(d, work):
+    """Hansen forest-loss year at every segment (cached in work/hansen_lossyear_cache.parquet) and its timing relative to
+    the two acquisitions: `none`, `before` both (pre-existing disturbance: patchy stands, reported apart), `between` (loss in
+    the years from one acquisition to the other, inclusive: the reference may not show what ICESat-2 saw; **dropped**),
+    `after` both. Same rule for every reference and version (LOG 18 Oct 2026)."""
+    import reference_lib as ref
+    cache = Path(work) / "hansen_lossyear_cache.parquet"
+    key = pd.DataFrame({"lon": d.lon.round(6), "lat": d.lat.round(6)})
+    known = pd.read_parquet(cache) if cache.exists() else pd.DataFrame(columns=["lon", "lat", "lossyear"])
+    todo = key.drop_duplicates().merge(known, on=["lon", "lat"], how="left")
+    todo = todo[todo.lossyear.isna()][["lon", "lat"]]
+    if len(todo):
+        ly = ref.hansen_lossyear(todo.lon.to_numpy(), todo.lat.to_numpy())
+        known = pd.concat([known, todo.assign(lossyear=np.where(ly > 0, 2000 + ly, 0))], ignore_index=True)
+        known.to_parquet(cache, index=False)
+    d = d.assign(lossyear=key.merge(known.drop_duplicates(["lon", "lat"]), on=["lon", "lat"], how="left").lossyear.to_numpy())
+    lo, hi = np.fmin(d.ref_year, d.year), np.fmax(d.ref_year, d.year)
+    d["disturbance"] = np.select([d.lossyear.fillna(0) == 0, d.lossyear < lo, d.lossyear > hi], ["none", "before", "after"], "between")
+    return d[d.disturbance != "between"].copy()
+
+
 def load_all(work):
     """Every reference's segments in one wide table (see module docstring)."""
     work = Path(work); runs = work / "runs"; parts = []
@@ -71,7 +93,13 @@ def load_all(work):
                 a = a.merge(b[k + [col]].drop_duplicates(k), on=k, how="left")
             v = nv(v)
         a = a[keep(a)]
-        parts.append(pd.DataFrame({"reference": ref, "region": a[region], "ref_h": a[ref_h], TODAY: a.h_canopy_phoreal,
+        if ref == "CanElevation lidar":
+            bx = gpd.read_parquet(runs / LATEST / sub / "boxes.parquet")[["box_id", "year"]].rename(columns={"year": "ref_year"})
+            a = a.merge(pd.DataFrame(bx), on="box_id", how="left")
+        else:
+            a = a.assign(ref_year=2019)
+        parts.append(pd.DataFrame({"reference": ref, "lon": a.lon, "lat": a.lat, "year": a.year, "ref_year": a.ref_year,
+                                   "region": a[region], "ref_h": a[ref_h], TODAY: a.h_canopy_phoreal,
                                    CONTROL: a.h_canopy_atl08, **{x: a.get(_vcol(x), np.nan) for x in VERSIONS[1:]},
                                    "solar_elevation": a.solar_elevation, "strong": a.strong, "track": a.track_id,
                                    "slope_deg": a.get("ground_slope_deg_" + LATEST.replace(".", ""))}))
@@ -94,11 +122,14 @@ def load_all(work):
             # Seward field: tallest field height within 2 m of each field point inside the segment (max over the points)
             refs.append(("Seward field (2 m)", a.field_max_200.where(a.get("field_n", 0) > 0)))
         for r, ref_h in refs:
-            parts.append(pd.DataFrame({"reference": r, "region": a.get("region", pd.Series("Seward", index=a.index)).fillna("Seward"),
+            parts.append(pd.DataFrame({"reference": r, "lon": a.lon, "lat": a.lat, "year": a.year,
+                                       "ref_year": a.als_year if "als_year" in a else 2024,
+                                       "region": a.get("region", pd.Series("Seward", index=a.index)).fillna("Seward"),
                                        "ref_h": ref_h, TODAY: a.h_canopy_phoreal, CONTROL: a.h_canopy_atl08,
                                        **{x: a.get(_vcol(x), np.nan) for x in VERSIONS[1:]}, "solar_elevation": a.solar_elevation,
                                        "strong": a.strong, "track": a.track_id, "slope_deg": a.get("ground_slope_deg")}))
     d = pd.concat(parts, ignore_index=True)
+    d = _add_disturbance(d, work)
     d = d[np.isfinite(d.ref_h)].copy()
     d["light"] = np.where(d.solar_elevation > 0, "day", "night")
     d["beam"] = np.where(d.strong.astype(bool), "strong", "weak")

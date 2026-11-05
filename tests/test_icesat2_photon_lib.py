@@ -32,6 +32,11 @@ def cfg06():
     return ipl.load_config(Path(__file__).resolve().parents[1] / "config" / "atl03_reclass_v0.6.yaml", profile="adapt")
 
 
+@pytest.fixture(scope="module")
+def cfg07():
+    return ipl.load_config(Path(__file__).resolve().parents[1] / "config" / "atl03_reclass_v0.7.yaml", profile="adapt")
+
+
 def synthetic_track(canopy_h=15.0, length=600.0, cover=0.6, bg_rate=2e5, slope=0.05, seed=0, footprint_m=0.0):
     """Photons over a sloping ground with a canopy of height canopy_h and given cover, plus background.
     footprint_m > 0 spreads ground returns over the footprint (+/- footprint_m / 2 x slope), as on real slopes."""
@@ -204,3 +209,27 @@ def test_v06_keeps_v05_afterpulse_fix(cfg06):
     x, h, truth, br = _with_afterpulses(*synthetic_track(canopy_h=0.0, slope=0.0, bg_rate=2e5))
     cls, rel, _, _ = ipl.classify_track(x, h, br, cfg06)
     assert np.median(np.abs(rel[truth == 1])) < 0.2
+
+
+def test_v07_night_top_uses_highest_canopy_photon(cfg06, cfg07):
+    """v0.7: at night (no background) the canopy top is the highest canopy photon, so a 20 m canopy reads taller than
+    with v0.6's RH98, and not above the true top."""
+    x, h, truth, br = synthetic_track(canopy_h=20.0, cover=0.5, slope=0.0, bg_rate=0.0)
+    s06, s07 = _segments(x, h, br, cfg06, solar_elevation=-20), _segments(x, h, br, cfg07, solar_elevation=-20)
+    assert s07["h_canopy"].median() > s06["h_canopy"].median()
+    assert s07["h_canopy"].median() <= 20.5
+    assert s07["night_top"].mean() > 0.9
+
+
+def test_v07_day_keeps_rh98(cfg07):
+    """v0.7: in bright daylight the expected background in the canopy window is large, so RH98 is kept."""
+    x, h, truth, br = synthetic_track(canopy_h=20.0, cover=0.5, slope=0.0, bg_rate=8e6)
+    segs = _segments(x, h, br, cfg07)
+    assert segs["night_top"].mean() < 0.1
+
+
+def test_v07_bare_flat_still_zero(cfg07):
+    """v0.7: bare flat ground at night (no photons above the ground) is still written as 0 m."""
+    x, h, truth, br = synthetic_track(canopy_h=0.0, slope=0.0, bg_rate=0.0)
+    segs = _segments(x, h, br, cfg07, solar_elevation=-20)
+    assert (segs["h_canopy"] == 0).mean() > 0.8

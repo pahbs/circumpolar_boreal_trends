@@ -249,7 +249,14 @@ def noise_filter(x, h, background_rate, cfg):
     tree = cKDTree(pts)
     count = tree.query_ball_point(pts, r=nz["window_along_m"], p=np.inf, return_length=True) - 1
     lam = expected_noise_count(background_rate, cfg)
-    thresh = np.maximum(lam + nz["k_sigma"] * np.sqrt(lam), nz["min_count"])
+    if nz.get("poisson_exact", False):
+        # v0.7: smallest neighbour count k with P(N >= k | lam) <= the one-sided tail of k_sigma (Poisson, not its normal
+        # approximation), with no fixed floor beyond `min_count_exact`. At night lam ~ 0.006, so 2 neighbours are already
+        # significant; v0.1-v0.6's fixed floor of 4 dropped 19 % of night canopy photons (LOG 18 Oct 2026, v0.7).
+        from scipy.stats import norm, poisson
+        thresh = np.maximum(poisson.isf(norm.sf(nz["k_sigma"]), np.maximum(lam, 1e-12)) + 1, nz.get("min_count_exact", 1))
+    else:
+        thresh = np.maximum(lam + nz["k_sigma"] * np.sqrt(lam), nz["min_count"])
     return count >= thresh, count, lam
 
 
@@ -736,11 +743,27 @@ def segment_metrics(photons, cfg, class_col="class_new", relief_col="relief_new"
         measurable = (out["n_canopy"] >= sv["min_canopy_photons"]) & out["h_canopy"].notna()
         out["h_canopy_raw"] = out["h_canopy"]
         out["short_veg_flag"] = enough & ~present & detect                         # 0 m: vegetation demonstrably absent
+        if "absent_sigma" in sv["presence"]:
+            # v0.7: 0 m only if nothing above the canopy floor exceeds the background (presence_sigma <= absent_sigma).
+            # Between that and k_sigma the evidence is too weak either way (at night 1-2 photons above the ground in an
+            # open stand) -> no height (veg_uncertain), instead of v0.4-v0.6's 0 m over forest (LOG 18 Oct 2026, v0.7).
+            out["veg_uncertain"] = out["short_veg_flag"] & (out["presence_sigma"] > sv["presence"]["absent_sigma"])
+            out["short_veg_flag"] = out["short_veg_flag"] & ~out["veg_uncertain"]
         out["veg_unmeasured"] = enough & present & ~measurable                    # vegetation seen, height not measurable
         out["low_signal"] = ~enough | (~present & ~detect)
         out.loc[out["short_veg_flag"], "h_canopy"] = 0.0
         out.loc[present & measurable & (out["h_canopy"] < sv["min_resolvable_m"]), "h_canopy"] = 0.0
-        out.loc[out["low_signal"] | out["veg_unmeasured"], "h_canopy"] = np.nan
+        out.loc[out["low_signal"] | out["veg_unmeasured"] | out.get("veg_uncertain", False), "h_canopy"] = np.nan
+        nt = cfg["segments"].get("night_top")
+        if nt:
+            # v0.7: where the expected solar background in the canopy window is negligible (< max_background_photons;
+            # in practice night), every canopy photon is a canopy return, so the top is the highest canopy photon (RH100)
+            # rather than RH98. ICESat-2 photons rarely reach the very top of the canopy, and RH98 of ~20 photons drops the
+            # one that did (LOG 18 Oct 2026, v0.7). By day RH98 stays, as a guard against noise photons.
+            mu = out["background_rate"] * 2.0 / C_LIGHT * out["n_shots"] * out["h_max_canopy"].fillna(0.0)
+            use = (out["h_canopy"] > 0) & (mu < nt["max_background_photons"]) & out["h_max_canopy"].notna()
+            out["night_top"] = use
+            out.loc[use, "h_canopy"] = out.loc[use, "h_max_canopy"]
     elif scheme == "new" and "low_signal" in sv:
         # v0.2: no height where the segment has too little signal to tell bare ground from canopy (NaN, flagged);
         # 0 m only where there is enough signal and the canopy evidence is weak or below the resolvable height.

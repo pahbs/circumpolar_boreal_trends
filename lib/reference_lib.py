@@ -549,3 +549,4 @@ def canelevation_chm(dsm_url, dtm_url, box_4326, out_path, max_height=60.0):
     with rasterio.open(out_path, "w", **prof) as dst:
         dst.write(chm, 1)
     return str(out_path)
+

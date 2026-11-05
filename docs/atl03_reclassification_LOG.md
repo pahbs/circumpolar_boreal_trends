@@ -13,7 +13,34 @@ ALS, Eurasian data) before scale-out.
 
 ## Current status and next steps
 
-**Status (18 Oct 2026): v0.6 is the final version of this series; for the training pool it is a trade-off** (entries
+**In progress (19 Oct 2026):** re-scoring every version on the production training pool, i.e. the segments passing
+`icesat2_boreal` `FilterUtils.filter_atl08_qual_v5` (Paul Montesano: "re-score everything from the start - filtering out
+the data in the way we do in the filter function"). Script `notebooks/atl03_reclass/v07_rescore_filtered.py`, running
+detached on forest202 (log `runs/v0.7/filtered/rescore.log`; outputs `pool_counts.csv`, `cohort_summary.csv`,
+`gradient.csv`, `scorecard.csv`, `forest_by_light.csv` in `runs/v0.7/filtered/`). Why: the 18–19 Oct "training pool" applied
+only strong beam + sun < 5°; in the G-LiHT pool 60 % of segments have `msw_flag` > 0 and 12 % have snow, and production
+drops both. **All pool numbers below (scorecard, rarity-weighted retention, hybrid recommendation, night RH100 check) are
+to be redone on the filtered pool before any decision.**
+
+**Status (19 Oct 2026): stop tuning rules; choose the final input against fixed criteria, then one independent test**
+(entries 19 Oct). v0.7 (a) night RH100 works (forest bias ~0.5 m better on every canopy-height-model reference, eastern
+CanElevation test included); v0.7 (b) the 1σ zero rule costs too much (CanElevation, all observations: 1,043 correct
+bare-ground zeros lost to remove 79 forest zeros). Post-hoc variants (no rerun) show the tuning has reached its limit: since
+v0.4 each change moves error between height classes or into missing data, the differences are within the track-bootstrap
+intervals, and the validation data are spent (eastern test now seen). Across the 0–30 m gradient the reclassification's
+real cost is **coverage of tall forest**: in the training pool it keeps 71–79 % of 15–25 m CanElevation segments (east
+54 %), today and control 98–99 %, from our noise filter and low-signal threshold, not from any 0 m rule. **Recommended
+final input (Paul Montesano to decide): the hybrid** = ATL08 photon classes with our binning (control), set to 0 m where
+our presence test finds vegetation absent (≤ 1σ). It keeps today's coverage at every height and uses our work only where it
+helps. Its cost: false heights return where our test is unsure (CanElevation 0–1 m bias +0.70 m vs v0.7 +0.15; G-LiHT
++3.1 vs +1.9). No v0.8 rule changes. **Principles agreed (Paul Montesano):** tall-forest samples are rare and valuable, so
+drop them only if particularly bad; aggressive noise removal deepens the tall-forest underestimate. Rarity-weighted
+retention: hybrid 0.97–0.99, v0.7 0.71–0.85; forest ≥ 15 m kept: hybrid 99–100 %, v0.7 54–79 %. Next: build the hybrid with
+night RH100 on its forest heights. **Sanity check passed** (entry 19 Oct): +0.4–0.5 m on forest, as with our classes, no runaway
+tops. It also found one LVIS tundra night track with 50–97 m ATL08/PhoREAL heights. Production's `filter_atl08_qual_v5` removes them
+(land-cover height cap), so they are not in today's training data. But the validation pool lacks that filter: re-score with it.
+
+**Earlier status (18 Oct 2026): v0.6 is the final version of this series; for the training pool it is a trade-off** (entries
 18 Oct, "Training pool"). **All observations**, CanElevation (independent discrete-return lidar), same segments, today →
 v0.6: false shrubs over bare ground 14 → 4 %, short-vegetation bias +1.0 → +0.3 m, 20 m+ forest −4.7 → −2.9 m, r² 0.73 → 0.77,
 forest called bare 1 → 5 %, coverage 94 → 51 % (acceptable). **Training pool (strong beams, solar elevation < 5°):** today is
@@ -23,9 +50,13 @@ G-LiHT −1.8 → −2.8 m) and writes 3–8 % of forest as 0 m: it fails the ta
 input over tundra and shrubland; for the forest part of the night / low-sun pool it is not yet better than today.**
 LVIS counts for less. All notebooks (00–11), methods, deck and figures describe v0.6.
 
-**Open issues:**
-0. **Training pool, forest:** keep more night canopy photons (v0.6 labels 19 % of night strong-beam canopy photons as
-   noise, ATL08 11 %) and stop zeros over forest; or use v0.6 only to remove false heights over short vegetation.
+**Open issues (19 Oct 2026):**
+0. **Decision (Paul Montesano):** final input for training: hybrid (recommended), v0.7a or today, judged on the criteria
+   in entry 19 Oct, "Where to stop". Then: hybrid in the segment pipeline (both inputs come from the same pass,
+   `validation_lib.segments_all_versions`), one independent acceptance test with the criteria fixed beforehand (NEON or
+   Nordic ALS), no tuning after it. Fix NL-Churchill_2019 `KeyError 'lon'` (notebook 10) before that test.
+   (Was, 18 Oct: keep more night canopy photons and stop zeros over forest; or use v0.6 only to remove false heights over
+   short vegetation. The second is the hybrid.)
 1. Tall forest still 2–3 m short against canopy-height-model lidar; the ground sits > 1 m too high under a fifth to a third
    of 15 m+ segments in every version (dense canopy, ≤ 2 ground photons per 10 m bin).
 2. Rare implausible heights over tundra (one segment at 38 m over < 2 m Seward tundra; LVIS 0–1 m non-zero heights +9 m):
@@ -45,7 +76,9 @@ methods §8; evidence: the dated entries below.
 
 | Version | Central idea (why it was made) | What changed | Result | Status |
 |---|---|---|---|---|
-| **v0.6** (18 Oct) | **v0.5's ground, without losing sparse ground under dense canopy.** v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m. | `ground.dense_min_photons` 3 → 1 (fraction test only). | CanElevation r² 0.770 (v0.4 0.775, v0.5 0.760), false vegetation 4.4 %, 20 m+ −2.93 m (v0.4 −2.67, v0.5 −3.29); G-LiHT r² 0.575; Seward bias 0.0 m. Training pool (strong, sun < 5°): false shrubs removed, forest ≥ 10 m ~1 m shorter than today. | **final of this series; trade-off for the training pool** |
+| hybrid (19 Oct, post-hoc) | **Use the reclassification only where it helps.** Over forest, ATL08 classes with our binning (control) beat v0.7 on the eastern test (r² 0.70 vs 0.64, 50 % more segments). | Control height; 0 m where v0.7 finds vegetation absent (presence ≤ 1σ). Computed from the v0.7 tables (`notebooks/atl03_reclass/v07_variants_posthoc.py`). | Training pool, CanElevation: coverage 86–99 % in every height class (v0.7 48–90 %); forest bias = control (−0.9 to −1.9 m, 5–25 m); 0–1 m bias +0.70 m (v0.7 +0.15, today +1.13); false shrubs 5.6 % (v0.7 4.8, today 9.3). Not an independent result. | **recommended final input; decision pending** |
+| **v0.7** (18 Oct) | **At night, trust sparse photons.** v0.6 wrote 0 m over open forest at night, and RH98 drops the one photon that reached the top. | (a) RH100 where the expected background in the canopy window is < 0.5 photons (`segments.night_top`); (b) 0 m only if presence ≤ 1σ, else no height (`presence.absent_sigma`). | (a) works: training-pool undisturbed night forest bias −1.33 → −0.71 m (CanElevation), −1.30 → −0.76 (eastern test), −2.84 → −2.17 (G-LiHT), r² −0.015. (b) costs too much: 1,043 correct zeros lost for 79 forest zeros fixed (CanElevation, all obs). | (a) keep; (b) drop |
+| **v0.6** (18 Oct) | **v0.5's ground, without losing sparse ground under dense canopy.** v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m. | `ground.dense_min_photons` 3 → 1 (fraction test only). | CanElevation r² 0.770 (v0.4 0.775, v0.5 0.760), false vegetation 4.4 %, 20 m+ −2.93 m (v0.4 −2.67, v0.5 −3.29); G-LiHT r² 0.575; Seward bias 0.0 m. Training pool (strong, sun < 5°): false shrubs removed, forest ≥ 10 m ~1 m shorter than today. | replaced by v0.7 (a) |
 | v0.5 (17 Oct) | **Put the ground where the photons are.** In v0.4's false heights over bare ground (G-LiHT ALS < 1 m, v0.4 > 0 m) the ground was > 1 m off in 30 % and ground photons were called canopy in 25 %; photons below the surface (after-pulses under bright or specular surfaces, daytime clusters) pulled the lower envelope down. | First ground guess per 10 m bin = lowest layer (2 × 0.6 m) with ≥ half the densest layer's photons (`ground.start: lowest_dense_layer`), not the 5th percentile of signal photons. | Development sites (harness): r² 0.51 → 0.55, false vegetation 16 → 13 %, tall forest 0.1–0.2 m lower. Independent: short vegetation better everywhere, tall forest ~0.5 m shorter on CanElevation. | replaced by v0.6 |
 | **v0.4** (17 Oct) | **Tell bare ground from vegetation correctly.** v0.3's short-vegetation gains came from writing 0 m, also over real forest; and on slopes the ground was found metres too low, so ground photons became "canopy". | (A) ground window widens with along-track slope (± 0.6 m + 5.5 m × slope); (B) one presence test on all photons above the ground (3σ over solar background) + "would a 25 %-cover canopy have been seen?" decide height / 0 m / NaN. Old 0 m rule removed. | Independent (LVIS + CanElevation): forest at 0 m 6.2 → 2.8 %, false vegetation 7.2 → 6.3 % (today 16 %), big gains on slopes; CanElevation best on every measure but coverage; LVIS r² 0.51 → 0.46 and RMSE up (heights of newly detected short vegetation unreliable); coverage 62–64 → 51–52 % (today 88–95 %). | tested; not adopted for training; leads to v0.5 |
 | v0.3 (15–16 Oct) | **Stop solar noise from inventing tall canopy tops.** > 30 m "canopy" over tundra in bright daylight. | Canopy-top recovery needs 3σ over background; column-test top = plateau, not maximum. | LVIS: spurious vegetation 47 → 12 %, tall forest nearly unbiased. **But** short-vegetation gains were mostly zeros, and 6–12 % of forest ≥ 5 m was 0 m (16 Oct). | replaced by v0.4 |
@@ -89,6 +122,210 @@ NEON needs an API token (Paul to create). Canopy cover on hold.
 
 **Then, before scale-out:** wider validation (NEON boreal/Arctic, Canadian provincial ALS, Fennoscandian national ALS).
 ---
+
+## 2026-10-19 · Sanity check: night RH100 on the control's heights (hybrid forest heights) passes
+
+**Question (Paul Montesano):** "the night RH100 rule/approach is good — let's make sure it passes a sanity check" when applied
+to the ATL08-class heights the hybrid uses. **Method:** the control's 30 m segments were rebuilt from the saved photons as in
+`validation_lib.segments_all_versions`, with the same night test as v0.7 rule (a) (`notebooks/atl03_reclass/v07_control_night_top.py`,
+forest202, about 10 min; check `v07_control_night_top_check.py`; outputs `runs/v0.7/variants/night_top_check_*.csv`). The rebuilt
+RH98 equals the stored control exactly on CanElevation, LVIS and Seward. On G-LiHT 79 % match, with the same canopy photon
+counts and relief differing by a few cm (median 0, IQR ± 0.05 m), so RH100 is compared with the rebuilt RH98. Undisturbed
+training pool; hybrid vs hybrid + night RH100, against v0.6 → v0.7 (rule (a) on our classes):
+
+| training pool | forest ≥ 5 m bias: hybrid → + RH100 | rule (a) on our classes | forest r² | forest MAE (m) | over by > 5 m where ref < 5 m |
+|---|---|---|---|---|---|
+| CanElevation all | −1.71 → −1.17 m | −1.65 → −1.11 | 0.743 → 0.723 | 2.66 → 2.62 | 4.1 → 4.5 % |
+| CanElevation east (seen) | −1.19 → −0.75 | −1.50 → −1.07 | 0.699 → 0.684 | 2.51 → 2.57 | 1.1 → 1.6 % |
+| G-LiHT | −2.85 → −2.32 | −2.57 → −2.14 | 0.497 → 0.482 | 3.72 → 3.53 | 19.2 → 21.5 % |
+| LVIS (low weight) | +1.75 → +2.32 | +2.10 → +2.64 | 0.533 → 0.507 | 2.78 → 3.20 | 11.9 → 13.1 % |
+
+**Checks:** (1) the size of the gain matches rule (a) on our classes (~0.5 m), with the same small r² dip. (2) The lift is
+modest: in forest ≥ 10 m, 85–98 % of segments are lifted, by a median of 0.3–0.45 m and a 95th percentile of 1–2 m (2.7 m LVIS 20–25 m). Over
+0–1 m, half to three quarters of the segments with a height are lifted, by a median of 0.04–0.17 m. (3) No runaway tops: overestimates over short
+vegetation rise by 0.4–2.3 points; segments > 35 m +2 on CanElevation, +2 on LVIS. Forest MAE neutral to better except on
+LVIS, which reads high already. **Verdict: passes; night RH100 goes into the hybrid build.**
+
+**Found on the way (pre-existing, not RH100):** 120 of the 122 LVIS pool segments > 35 m in the control come from one night
+track over Arctic tundra (`1150_4_60`, 69.7° N, −148.6°, sun −15°). There ATL08 and today's PhoREAL give 50–97 m canopy where
+LVIS reads 0.6 m, and v0.7 gives 30–59 m on 54 of them. **Correction (same day; Paul Montesano: "in the icesat2_boreal repo we have always used filtering"):** it is **not** in today's
+training data. Production (`icesat2_boreal/lib/process_atl08_boreal.py`) applies `FilterUtils.filter_atl08_qual_v5`. It keeps
+a segment only if all of these hold: `msw_flag` 0, strong beam, snow-free, `h_canopy` below a land-cover cap (forest 50–60 m,
+shrub 20, herbaceous / wetland 10, moss / bare 5), sun < 5°, `sigma_topo` < 2.5, `h_dif_ref` < 25, June–September. All 119
+PhoREAL segments > 35 m on that track fail it. The cause is the land-cover cap (herbaceous 30, wetland 90 → 10 m; 5 more
+have a fractional, averaged land-cover value that matches no class and is dropped). `msw_flag` is 0 on all of them, so the
+multiple-scattering flag would not have caught them. **Open issue 2 is the existing land-cover cap**, applied to each
+version's own height. **Consequence for validation:** the "training pool" used since 18 Oct (strong beams, sun < 5°) applies
+only two of these conditions. It still contains segments that production drops (`msw_flag` > 0, snow, the land-cover cap,
+`sigma_topo`, `h_dif_ref`), so pool results should be re-scored with the full filter (open issue 0).
+
+## 2026-10-19 · Where to stop: the limits of rule tuning, and how to choose the final input (Paul Montesano's question)
+
+**Question:** "We are now going back and forth seemingly trying to offset the negative results of the previous config run.
+At what point do we recognize the limits of this optimization? Let's not do more harm than good to our ability to
+characterize forests across the full boreal height gradient of about 0–30 m."
+
+**Answer: we are at that point.** Four signs, each on record:
+1. **Gains since v0.4 are inside the noise.** Training pool, CanElevation, same segments (`runs/v0.7/cohort_summary.csv`):
+   r² v0.4 0.911 [0.861, 0.927], v0.6 0.903 [0.859, 0.923], v0.7 0.901 [0.858, 0.919]; bias ≥ 10 m −1.70, −1.92, −1.33 m,
+   with overlapping intervals. Each version since v0.4 fixed one error by creating another of similar size elsewhere on
+   the gradient or in missing data (v0.3 zeros over forest, v0.5 ground under dense canopy, v0.7 lost bare-ground zeros).
+2. **The remaining errors are not threshold problems.** The canopy top from photons sits ~4.7 m below the lidar top for
+   ATL08 and our classes alike (18 Oct, v0.7 diagnosis 3). The ground under dense canopy rests on ≤ 2 photons per 10 m bin
+   (open issue 1). The segment reference (RH98 of a 30 × 11 m CHM) does not match an 11 m footprint (open issue 3). And
+   5–10 m open stands with 1–2 photons above the ground look like bare ground (4–20 % written 0 m in every version with our
+   zero test, below).
+3. **The validation data are spent.** G-LiHT and western CanElevation designed v0.7. The eastern test was judged once
+   (18 Oct) and has now been looked at again for the variants below. Tuning further on these references would fit the
+   validation, not the boreal.
+4. **The yardstick was wrong for the use.** For training a biomass model across 0–30 m, two kinds of error are the least
+   recoverable: wrong labels (false shrubs, forest written 0 m) and *selective loss of a height range*, which biases the
+   training sample. A smooth, consistent height bias is the most recoverable, because the model can absorb it. Mean bias
+   and r² on common segments, the main measures so far, cannot see selective loss.
+
+**Criteria, fixed now and applied once** (training pool, each version on its own segments, classes 0–1, 1–2, 2–5, 5–10,
+10–15, 15–20, 20–25 m). Thresholds are Paul Montesano's to set; proposed:
+- C1 coverage in every height class ≥ 85 % of today's (no selective loss; rarity-weighted, see Principles below);
+- C2 false shrubs (reference < 1 m, ICESat-2 > 2 m) below today's;
+- C3 forest 5–10 m written 0 m: as low as possible (no version reaches 1 %);
+- C4 forest 5–25 m mean absolute error no worse than today's.
+
+Scorecard (`runs/v0.7/variants/criteria_scorecard.csv`; CanElevation all boxes / eastern test (seen) / G-LiHT; LVIS low weight):
+
+| | C1 lowest class coverage vs today | C2 false shrubs | C3 forest 5–10 m at 0 m | C4 forest MAE (m) | forest bias (m) | 0–1 m bias (m) |
+|---|---|---|---|---|---|---|
+| today | 1.00 / 1.00 / 1.00 | 9.3 / 6.0 / 69 % | 0 / 0 / 0 % | 2.61 / 2.94 / 3.43 | −0.93 / −0.81 / −1.64 | +1.13 / +0.80 / +4.67 |
+| control | 0.60 / 0.61 / 0.56 (0–1 m) | 7.7 / 4.5 / 66 % | 0 / 0 / 0 % | 2.34 / 2.39 / 3.50 | −1.32 / −1.03 / −2.59 | +1.53 / +0.98 / +5.59 |
+| v0.7 | 0.54 / 0.54 / 0.63 (1–2 m; 20–25 m) | 4.8 / 2.1 / 40 % | 5 / 12 / 11 % | 2.27 / 2.52 / 2.98 | −0.84 / −1.02 / −2.15 | +0.15 / +0.08 / +1.93 |
+| v0.7a | 0.64 / 0.54 / 0.63 | 4.8 / 2.1 / 40 % | 8 / 19 / 21 % | 2.35 / 2.68 / 3.15 | −0.94 / −1.21 / −2.36 | +0.09 / +0.04 / +1.54 |
+| **hybrid** | **0.84 / 0.93 / 0.90** | 5.6 / 3.0 / 41 % | 4 / 10 / 8 % | 2.42 / 2.47 / 3.64 | −1.41 / −1.13 / −2.75 | +0.70 / +0.33 / +3.09 |
+| hybrid-a | 0.85 / 0.98 / 0.95 | 5.6 / 3.0 / 41 % | 7 / 16 / 17 % | 2.46 / 2.52 / 3.75 | −1.46 / −1.19 / −2.95 | +0.51 / +0.17 / +2.47 |
+
+**Reading:** no version passes all four. Pure reclassification (v0.6, v0.7, v0.7a) fails C1, and fails it in tall forest
+(eastern test 54 % of 20–25 m segments kept), which is the harm to the 0–30 m gradient we want to avoid. The hybrid is the
+only version near C1 everywhere, passes C2, and roughly halves the forest zeros of v0.7a. It matches v0.7 on forest error
+on CanElevation (MAE 2.42 vs 2.27 m) and LVIS (2.77 vs 3.55 m), but is worse on G-LiHT (3.64 vs 2.98 m). It reads forest
+~0.5 m shorter than v0.7, a smooth bias of the kind the model can absorb, and is worse than v0.7 over bare ground where
+our test is not confident. **Recommendation: the hybrid, with v0.7's strict zeros (≤ 1σ), as the final input**, if Paul
+Montesano accepts C1 as the deciding criterion. Choosing hybrid vs hybrid-a is the same trade as rule (b) below (fewer
+forest zeros vs fewer false shrubs). It is a preference, not something more tuning can settle.
+
+**Principles (Paul Montesano, 19 Oct 2026), standing for this work:** (i) lost samples are weighed by what they are.
+Tall-forest samples are rare and the most valuable for training, so losing them counts far more than losing bare ground,
+and a tall-forest segment is dropped only if its height is particularly bad. Overall coverage loss alone is still
+acceptable (17 Oct). (ii) Boreal forests are almost always underestimated in the taller cohorts, because with sparse
+photon counting the chance of hitting the very tops of these small crowns is low. Noise removal that is too aggressive
+throws away the few top photons and makes this worse. **C1 therefore becomes rarity-weighted:** each segment weighted by
+1 / (its height class's share of today's pool samples). A tall-forest (≥ 15 m) segment then weighs 7× (CanElevation all),
+22× (G-LiHT), 41× (eastern test) a 0–1 m one (`variants/retention_rarity_weighted.csv`):
+
+| training pool | rarity-weighted retention (CanElevation all / east / G-LiHT / LVIS) | forest ≥ 15 m kept (CanElevation all / east / G-LiHT) |
+|---|---|---|
+| control | 0.91 / 0.92 / 0.92 / 0.92 | 99 / 100 / 99 % |
+| v0.6, v0.7a | 0.81 / 0.79 / 0.79 / 0.90 | 79 / 55 / 70 % |
+| v0.7 | 0.76 / 0.71 / 0.71 / 0.85 | 79 / 54 / 70 % |
+| **hybrid** | **0.97 / 0.99 / 0.98 / 0.99** | **100 / 100 / 99 %** |
+
+The tall segments the reclassification loses are not particularly bad: ATL08 classes give heights on 89–90 % of them,
+with bias −0.81 m, vs −2.25 m on the tall segments v0.7 keeps (entry below). Under (i), pure reclassification fails, and
+the hybrid is the only version that meets it. Under (ii) the hybrid's forest heights should also get rule (a), RH100 where
+the background is negligible, which is the physical point of (ii) and is already validated for our classes. The hybrid
+above uses RH98, because the v0.7 tables do not store the control's highest canopy photon. Build it with (a) and judge it
+only in the independent test. "Particularly bad" is to be defined physically (plausibility cap, open issue 2), not by a
+signal threshold.
+
+**Endgame (then stop):** (1) decide the final input and the C1–C4 thresholds; (2) build it in the pipeline: control
+heights and our presence flags already come from the same pass (`validation_lib.segments_all_versions`); (3) one
+independent acceptance test, never used before (NEON boreal/Arctic or Nordic ALS), pass/fail on C1–C4, no tuning
+afterwards; (4) report the four limits in sign 2 as results of this work, for the model to handle or for a later product.
+
+## 2026-10-19 · v0.7 results; post-hoc variants: zero rule off (v0.7a), day-only off (v0.7n), hybrid
+
+**Run** `runs/v0.7/` (18 Oct, 15:42–22:08, notebooks 01–05, 09–11 rc = 0). NL-Churchill_2019 failed in notebook 10
+(`KeyError 'lon'`) and is missing from the eastern test (now 14 tracks). Variants were computed from the saved v0.7 segment
+tables (`notebooks/atl03_reclass/v07_variants_posthoc.py` → `runs/v0.7/variants/`). Rule (b) only turns v0.6 zeros into no
+height, so they are exact: the uncertain segments equal the v0.6 0 m → v0.7 NaN segments (1,334 CanElevation, 6,978 LVIS).
+
+**(a) Night RH100: works; keep.** Training pool, undisturbed forest ≥ 5 m, night, v0.6 → v0.7
+(`cohort_forest_by_stratum.csv`, `cohort_east_test_forest.csv`):
+
+| | bias (m) | RMSE (m) | r² |
+|---|---|---|---|
+| CanElevation, all boxes | −1.33 → −0.71 | 3.30 → 3.21 | 0.724 → 0.709 |
+| CanElevation east (test) | −1.30 → −0.76 | 3.82 → 3.72 | 0.624 → 0.608 |
+| G-LiHT | −2.84 → −2.17 | 4.86 → 4.49 | 0.606 → 0.580 |
+| LVIS (low weight) | +1.82 → +2.41 | 4.14 → 4.52 | 0.514 → 0.497 |
+
+The eastern test confirms the design data. r² dips slightly as expected, because with RH100 a single photon sets the top.
+
+**(b) The 1σ zero rule: costs too much; drop.** All observations, undisturbed (`variants/all_obs_zero_rule.csv`),
+CanElevation v0.6 → v0.7: correct zeros (reference < 1 m) 3,046 → 2,003, zeros over forest ≥ 5 m 124 → 45, coverage
+0.51 → 0.41: 1,043 correct zeros lost for 79 forest zeros fixed (13 : 1). LVIS 5,293 → 3,537 vs 107 → 26 (22 : 1). **Night
+only is no fix for training:** below 5° sun the expected background in the 5 m layer is < 0.5 photons (G-LiHT tables:
+18,806 of 18,822 segments), so the whole training pool is "night" to the code and night-only rule (b) is v0.7 there.
+Applying it only below 5° (v0.7n) recovers daytime zeros (CanElevation 2,802 correct, 96 forest; 244 : 28 vs v0.6) but
+changes nothing in the pool. **No count-based alternative either:** presence = (N − μ)/√(μ + 1) with μ ≈ 0 at night, so
+"> 1σ" already means "≥ 2 photons above the floor". Training pool, own segments (`variants/cohort_gradient_variants.csv`),
+CanElevation, v0.7 vs v0.7a: 0–1 m coverage 0.63 vs 0.76; zeros 2–5 m 11 vs 23 %, 5–10 m 5 vs 8 %; MAE 5–10 m 2.08 vs
+2.22 m. On common segments the two are identical.
+
+**Coverage of tall forest (new; applies to v0.4–v0.7).** Training pool, CanElevation, share of segments with a height:
+15–20 m today 0.99, control 0.98, v0.6/v0.7 0.71 (east 0.54); 20–25 m 0.98 / 0.98 / 0.79 (east 0.54); G-LiHT 20–25 m
+0.98 / 0.98 / 0.62. Cause (CanElevation undisturbed pool, ≥ 15 m, 133 segments lost): about half `low_signal` (< 15
+background-corrected photons) and half no v0.7 segment at all (< 5 signal photons after our noise filter). Rule (b) plays
+no part (1 segment). ATL08 classes give a height on 89–90 % of these segments, with bias −0.81 m, vs −2.25 m on the
+segments v0.7 keeps. The reclassification drops tall forest where ATL08 labels work.
+
+**Hybrid** (control height; 0 m where v0.7 finds vegetation absent): results and reading in the entry above. Training pool,
+CanElevation, same segments: r² 0.889 [0.832, 0.927] (v0.7 0.883, today 0.862), false shrubs 5.6 % (v0.7 4.8, today 9.3),
+bias ≥ 10 m −1.95 m (v0.7 −1.26, today −1.33). **Correction to the 19 Oct discussion:** the night-forest numbers quoted there
+as "CanElevation west" are all CanElevation boxes (`cohort_forest_by_stratum.csv` has no west/east split).
+
+## 2026-10-18 · Disturbance in validation: one rule for every reference and version (Paul Montesano's question)
+
+**Question:** do disturbances between the ICESat-2 and reference acquisitions pollute the comparisons? **Answer:** hardly.
+Every reference is paired with ICESat-2 from the same year (CanElevation, LVIS) or screened at photon level for loss in or
+after the lidar year (G-LiHT, since v0.1). Hansen GFC-2024 loss year at the segment centre, timing relative to the two
+acquisitions: loss **between/at** them 2 CanElevation and 12 LVIS segments; loss **before both** (pre-existing harvest / fire
+mosaics) 5.1 % of CanElevation (71 % of them forest), 7.6 % of LVIS, 3.3 % of G-LiHT, none at Seward; loss after both 3.9 %
+of LVIS. **Rule from now on** (`presentation_lib._add_disturbance`, notebook 11): loss between the acquisitions → dropped
+everywhere; loss before both → reported apart (appendix 4), because the segment reference (98th percentile of the 30 × 11 m
+CHM) picks up residual trees the 11 m footprint misses and no version is right there; main results on undisturbed stands
+(no loss, or loss after both). Notebook 11 recomputes every version (today, control, v0.2–v0.7) on those segments. Earlier LOG
+numbers are on all segments. Next validation step: a footprint-level reference. (A duplicate `hansen_lossyear` added to
+`reference_lib` earlier today shadowed the original; removed before notebook 02 of the v0.7 run used it.)
+
+## 2026-10-18 · v0.7: night forest (Paul Montesano: "the best version improves forest height across the full range of boreal forests with night data")
+
+**Design protocol (Paul Montesano's choice):** CanElevation split by region. **Design:** G-LiHT + western boxes (YT, NWT, BC, AB,
+NRCAN; 20 boxes). **Independent test:** eastern boxes (SK, MB, ON, QC, NL, PC, DUC, CGP; 27 boxes), judged once. Aggregate
+CanElevation numbers including the east had been seen before the split (v0.6 entries); no east-only breakdown was looked at.
+
+**Diagnosis (design data, training pool):**
+1. Night canopy photons labelled noise (19 %): the noise filter's fixed floor of 4 neighbours. At night the expected background
+   in the window is ~0.006 photons; 1,285 of 1,748 lost night canopy photons have 0–3 neighbours; 73 % of reference noise
+   photons have none. An exact-Poisson threshold (A) keeps them, but on the night pool it adds false heights over bare ground and
+   lowers forest r² on G-LiHT (0.69 → 0.66); it raises all-observation r² on G-LiHT (0.55 → 0.64, a daytime effect). **Not in
+   v0.7**; candidate for a daytime version.
+2. Forest written as 0 m: all from "not present but detectable", with presence 0–3σ (0–2 photons above the floor at night) in
+   open stands and on steep slopes.
+3. Most of the tall-forest gap to today is not the labels: on CanElevation pool forest the control (ATL08 labels, our
+   binning) is already 0.9–1.4 m shorter than today; PhoREAL's lower ground lifts all heights (today +1.0 m over bare ground)
+   and offsets the canopy-top undersampling in tall forest. Absolute canopy top from photons is ~4.7 m below the lidar top for
+   ATL08 and our labels alike.
+4. **Western CanElevation night forest by Hansen loss:** undisturbed (446 segments) r² today 0.70, control 0.72, v0.6 0.76;
+   RMSE 3.10 / 3.22 / 2.94 m. With Hansen loss (166 segments, mostly NRCAN North_East_Timber harvest mosaic): r² 0.27 / 0.16 /
+   0.00 — the segment RH98 of the 30 × 11 m CHM picks up residual trees the 11 m footprint mostly misses. v0.6's apparent
+   night-forest loss on CanElevation sits in disturbed stands.
+
+**v0.7 (one idea: at night, trust sparse photons):** (a) canopy top = highest canopy photon (RH100) where the expected
+background in the canopy window is < 0.5 photons (`segments.night_top`; night in practice), RH98 otherwise; (b) 0 m only if the
+photon excess above the canopy floor is ≤ 1σ of the background (`short_veg.presence.absent_sigma: 1`), else no height. Design
+results (western CanElevation, night, undisturbed forest ≥ 5 m): v0.6 → v0.7 RMSE 2.94 → 2.85 m, bias −1.37 → −0.70 m, slope
+0.88 → 0.90, r² 0.76 → 0.74, forest at 0 m 10 → 5; bare-ground zeros 341 → 286, false heights 18 → 20 of 566. G-LiHT pool
+forest: RMSE 4.49 → 4.07 m, bias −2.73 → −2.04 m. Tests: `test_v07_*`. **Validation change (all versions):** LVIS and
+CanElevation segments carry the Hansen loss year (`reference_lib.hansen_lossyear`); notebook 11 reports undisturbed segments
+apart and the eastern CanElevation test. Run `runs/v0.7/` started 15:42.
 
 ## 2026-10-18 · Training pool (strong beams, sun < 5°): v0.6 removes false shrubs but shortens forest by ~1 m (Paul Montesano's question)
 

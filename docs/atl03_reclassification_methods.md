@@ -1,6 +1,6 @@
 # Methods: ATL03 v007 photon reclassification and reprocessed ATL08-style 30 m segments
 
-**Version described:** config `v0.6` (`config/atl03_reclass_v0.6.yaml`), code in `lib/` · **Status:** v0.6 is the final version of this series; for the night / low-sun training pool it is a trade-off (LOG)
+**Version described:** config `v0.7` (`config/atl03_reclass_v0.7.yaml`), code in `lib/` · **Status:** v0.6 is the final version of this series; for the night / low-sun training pool it is a trade-off (LOG)
 (18 October 2026) · **Plan:** `atl03_reclassification_plan.md` · **Decisions and results:** `atl03_reclassification_LOG.md`
 
 This document describes exactly what the code does, so that the 30 m segments can be reproduced and reviewed. Every number
@@ -156,7 +156,7 @@ ground photons (median per 10 m bin, interpolated) (`native_relief`).
   `Ev` = max(0, `Evr` − R_bg·(2/c)·*H*_c), `Eg` = max(0, `Egr` − R_bg·(2/c)·1.2 m), *H*_c = highest canopy relief − 0.6 m.
   `canopy_signal_photons` = `Ev` × shots, `ground_signal_photons` = `Eg` × shots.
 
-### 3.2 Is there vegetation, and what is reported (`vegetation_presence`, config `short_veg`) · v0.4
+### 3.2 Is there vegetation, and what is reported (`vegetation_presence`, config `short_veg`) · v0.4, night rules v0.7
 Each segment gets exactly one of three answers: **a height**, **0 m** (vegetation demonstrably absent), or **NaN** (cannot
 tell). The decision comes from one statistical test plus one detectability check:
 
@@ -174,9 +174,10 @@ tell). The decision comes from one statistical test plus one detectability check
 | Condition | `h_canopy` | flag |
 |---|---|---|
 | ground + canopy signal photons < 15 (since v0.2; ~50 per 100 m in ATL08) | NaN | `low_signal` |
-| vegetation present, ≥ 3 canopy photons | canopy RH98 (0 m if < 0.6 m) | — |
+| vegetation present, ≥ 3 canopy photons | canopy RH98 (0 m if < 0.6 m); **v0.7: RH100 where the expected background in the canopy window < 0.5 photons** | `night_top` (v0.7) |
 | vegetation present, < 3 canopy photons | NaN | `veg_unmeasured` |
-| not present, would have been seen | **0 m** | `short_veg_flag` |
+| not present, would have been seen | **0 m** (v0.7: only if `presence_sigma` ≤ 1) | `short_veg_flag` |
+| v0.7: not present, would have been seen, 1 < `presence_sigma` < 3 | NaN | `veg_uncertain` |
 | not present, would not have been seen | NaN | `low_signal` |
 
 *Why (v0.4):* v0.2–v0.3 wrote 0 m wherever canopy evidence was weak (< 3 canopy photons, or < 5 after background
@@ -184,6 +185,11 @@ correction). Weak evidence is not absence: 6–12 % of forest ≥ 5 m against LV
 each), and the improvement in short-vegetation bias came mostly from zeros (LOG, 16 Oct). The new rule writes 0 m only when a
 canopy would have been detected and none was. Outputs: `presence_sigma`, `presence_top_m`, `veg_present`, `veg_detectable`,
 `veg_unmeasured`, `ground_slope_deg` (median along-track slope, also used for slope strata).
+
+*Why (v0.7):* the biomass training pool is strong beams with the sun < 5°. At night the expected background in a canopy
+window is a few hundredths of a photon, so every canopy photon is a canopy return and the highest one is the best estimate of
+the top (ICESat-2 photons rarely reach the very top; RH98 of ~20 photons drops the one that did). Also at night, 1–2 photons
+above the ground in an open stand gave `presence_sigma` 1–3 and v0.4–v0.6 wrote 0 m over forest; weak evidence is now no height.
 
 *Earlier rules (for reading old results):* v0.1 set 0 m for < 3 canopy photons, RH98 < 0.6 m, or < 5 background-corrected canopy
 photons, whatever the total signal. v0.2–v0.3 added `low_signal` (NaN) and kept the same 0 m rule for the rest.
@@ -263,7 +269,8 @@ Each version changes one idea, chosen from the previous version's largest error.
 
 | Version | Date | Central idea | What changed | Why (evidence) | Main result |
 |---|---|---|---|---|---|
-| **v0.6** | 18 Oct 2026 | **v0.5's ground, without losing sparse ground under dense canopy** | `ground.dense_min_photons` 3 → 1 | v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m (ground vs CanElevation DTM): bins with 1–2 ground photons failed the 3-photon minimum | Independent CanElevation, same segments: r² 0.775 (v0.4) / 0.760 (v0.5) / 0.770; false vegetation 5.0 / 4.3 / 4.4 %; 20 m+ forest −2.67 / −3.29 / −2.93 m (today −4.74). G-LiHT r² 0.575 (v0.4 0.545). **Final of this series.** Training pool (strong beams, sun < 5°): false shrubs removed (CanElevation 6 → 2 %) but forest ≥ 10 m ~1 m shorter than today (−1.7 → −2.7 m), so not yet better than today for forest there. Remaining: tall forest 2–3 m short (ground too high under dense canopy in a fifth to a third of 15 m+ segments); one 38 m segment over Seward tundra (needs a plausibility cap) |
+| **v0.7** | 18 Oct 2026 | **At night, trust sparse photons** (training pool: strong beams, sun < 5°) | canopy top = highest canopy photon where the expected background in the canopy window is < 0.5 photons (`segments.night_top`); 0 m only if the excess above the floor is ≤ 1σ (`presence.absent_sigma`), else no height | night forest is the training pool; v0.6 wrote 0 m over open forest at night and RH98 drops the one photon that reached the top; designed on G-LiHT + western CanElevation, tested on eastern CanElevation | (a) kept: night forest bias ~0.5 m better on every canopy-height-model reference incl. the eastern test; (b) dropped: 13 correct bare-ground zeros lost per forest zero fixed (CanElevation). Tall-forest coverage 54–79 % of today in the training pool (noise filter, low-signal threshold). Final input under decision: hybrid (LOG 19 Oct 2026) |
+| v0.6 | 18 Oct 2026 | **v0.5's ground, without losing sparse ground under dense canopy** | `ground.dense_min_photons` 3 → 1 | v0.5 raised the ground > 1 m in 8–15 % of CanElevation segments ≥ 10 m (ground vs CanElevation DTM): bins with 1–2 ground photons failed the 3-photon minimum | Independent CanElevation, same segments: r² 0.775 (v0.4) / 0.760 (v0.5) / 0.770; false vegetation 5.0 / 4.3 / 4.4 %; 20 m+ forest −2.67 / −3.29 / −2.93 m (today −4.74). G-LiHT r² 0.575 (v0.4 0.545). **Final of this series.** Training pool (strong beams, sun < 5°): false shrubs removed (CanElevation 6 → 2 %) but forest ≥ 10 m ~1 m shorter than today (−1.7 → −2.7 m), so not yet better than today for forest there. Remaining: tall forest 2–3 m short (ground too high under dense canopy in a fifth to a third of 15 m+ segments); one 38 m segment over Seward tundra (needs a plausibility cap) |
 | v0.5 | 17 Oct 2026 | **Put the ground where the photons are** | first ground guess = lowest layer with ≥ half the densest layer's photons, not the 5th percentile | in v0.4's false heights over bare G-LiHT ground, the ground was > 1 m off in 30 % and ground photons were called canopy in 25 %; the planned height-from-excess rule was tested first and dropped (no gain) | Short vegetation and false vegetation better at every reference; tall forest ~0.5 m shorter than v0.4 on CanElevation (20 m+ −2.76 → −3.34 m). Replaced by v0.6 |
 | v0.4 | 17 Oct 2026 | **Tell bare ground from vegetation correctly:** find the ground on slopes, and write 0 m only when vegetation would have been seen and was not | (A) ground window widens with along-track slope (± 0.6 m + 5.5 m × slope); canopy floor rises with it. (B) one presence test on all photons above the ground (Poisson 3σ) + a detectability check decide height / 0 m / NaN; the < 3 / < 5 canopy-photon 0 m rule is removed | v0.3's short-vegetation gains were mostly zeros, and 6–12 % of forest ≥ 5 m was set to 0 m; on development sites, 71 % of bare segments on slopes > 10° had false vegetation because the ground sat ~2.7 m too low | Development: forest set to 0 m 18 → 9 % (5–10 m), 4 → 1 % (15 m+); spurious vegetation 28 → 16 % (slopes > 10°: 71 → 12 %). Independent (LVIS + CanElevation): forest at 0 m 6.2 → 2.8 %, false vegetation 7.2 → 6.3 %; CanElevation best on all measures but coverage; LVIS r² 0.51 → 0.46 (heights of newly detected short vegetation unreliable); coverage 62–64 → 51–52 %. Not adopted for training |
 | v0.3 | 15–16 Oct 2026 | **Stop solar noise from inventing tall canopy tops** | canopy-top recovery needs neighbours above the background by 3σ; column-test top = plateau (`top_k = 1`) instead of maximum | > 30 m "canopy" over tundra in bright daylight (tile 3638, 2024) | LVIS 2019: spurious vegetation 47 → 12 %, tall forest nearly unbiased; CanElevation: 30 → 9 %. Later found: short-vegetation gains mostly zeros |
